@@ -6,7 +6,10 @@ data class Track(
     val title: String,
     val artist: String,
     val coverUrl: Any?,
-    val durationMs: Long
+    val durationMs: Long,
+    val providerName: String? = null,
+    val providerTrackUrl: String? = null,
+    val licenseUrl: String? = null
 )
 
 data class LyricLine(val timeMs: Long, val text: String)
