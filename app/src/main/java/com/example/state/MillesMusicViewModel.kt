@@ -19,6 +19,8 @@ import com.example.model.SampleCatalog
 import com.example.model.SecondaryDestination
 import com.example.model.ThemeMode
 import com.example.model.Track
+import com.example.music.JamendoMusicSource
+import com.example.BuildConfig
 import com.example.ui.PlayerUiState
 import com.example.ui.components.MillesTab
 import kotlinx.coroutines.delay
@@ -48,6 +50,9 @@ data class MillesUiState(
 
     // Discovery & Library state
     val searchQuery: String = "",
+    val searchResults: List<Track> = emptyList(),
+    val isSearching: Boolean = false,
+    val searchError: String? = null,
     val favoriteTrackIds: Set<String> = SampleCatalog.initialFavoriteTrackIds,
     val userPlaylists: List<Playlist> = SampleCatalog.initialUserPlaylists,
 
@@ -82,6 +87,10 @@ class MillesMusicViewModel : ViewModel() {
 
     private var playbackController: MediaController? = null
     private var playerListener: Player.Listener? = null
+    private var searchJob: kotlinx.coroutines.Job? = null
+    private val musicSource by lazy {
+        JamendoMusicSource(BuildConfig.JAMENDO_CLIENT_ID.ifBlank { "709fa152" })
+    }
 
     fun attachPlaybackController(controller: MediaController) {
         detachPlaybackController()
@@ -365,7 +374,49 @@ class MillesMusicViewModel : ViewModel() {
     }
 
     fun updateSearchQuery(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
+        _uiState.update { it.copy(searchQuery = query, searchError = null) }
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(350L)
+            _uiState.update { it.copy(isSearching = true, searchError = null) }
+            try {
+                val results = musicSource.searchTracks(query)
+                _uiState.update {
+                    it.copy(
+                        searchResults = results,
+                        isSearching = false,
+                        searchError = if (results.isEmpty()) "No licensed catalogue results found" else null
+                    )
+                }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _uiState.update {
+                    it.copy(
+                        searchResults = emptyList(),
+                        isSearching = false,
+                        searchError = error.message ?: "Unable to search music catalogue"
+                    )
+                }
+            }
+        }
+    }
+
+    fun playSearchResult(trackId: String) {
+        val selected = _uiState.value.searchResults.firstOrNull { it.id == trackId } ?: return
+        playTrack(
+            selected,
+            customQueue = _uiState.value.searchResults,
+            source = "Jamendo",
+            openPlayer = false
+        )
+    }
+
+    fun openSearchResultOptions(trackId: String) {
+        _uiState.value.searchResults.firstOrNull { it.id == trackId }?.let(::openTrackOptions)
     }
 
     fun selectThemeMode(mode: ThemeMode) {
@@ -492,8 +543,11 @@ fun Track.toUiTrack(): com.example.ui.Track = com.example.ui.Track(
     id = id,
     title = title,
     artist = artist,
-    coverUrl = artwork.imageRes,
-    durationMs = durationSeconds * 1000L
+    coverUrl = artwork.imageUrl ?: artwork.imageRes,
+    durationMs = durationSeconds * 1000L,
+    providerName = providerName,
+    providerTrackUrl = providerTrackUrl,
+    licenseUrl = licenseUrl
 )
 
 fun Playlist.toUiCollection(): com.example.ui.Collection = com.example.ui.Collection(
