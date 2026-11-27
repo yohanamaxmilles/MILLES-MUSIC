@@ -673,15 +673,7 @@ fun MillesBottomNavBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // Signature top indicator pill on active tab
-                    Box(
-                        modifier = Modifier
-                            .width(if (selected) 24.dp else 0.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(if (selected) colors.lime else Color.Transparent)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    // Claude design: selected state uses Lime icon + label only.
                     Icon(
                         imageVector = if (selected) spec.activeIcon else spec.inactiveIcon,
                         contentDescription = stringResource(spec.labelRes),
