@@ -1,0 +1,80 @@
+<resources>
+    <string name="app_name">MILLES MUSIC</string>
+    <string name="brand_milles">MILLES</string>
+    <string name="brand_music">MUSIC</string>
+    <string name="tagline">A different way to feel music.</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_explore">Explore</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_favorites">Favorites</string>
+    <string name="nav_profile">Profile</string>
+
+    <!-- Home -->
+    <string name="hero_title">Good Music,\nEvery Day.</string>
+    <string name="hero_subtitle">Curated Soundscapes · Spatial Mix</string>
+    <string name="section_trending">Trending Now</string>
+    <string name="section_made_for_you">Made for You</string>
+    <string name="section_recently_played">Recently Played</string>
+    <string name="action_see_all">See all</string>
+
+    <!-- Explore & Search -->
+    <string name="title_explore">Explore</string>
+    <string name="title_search">Search</string>
+    <string name="search_placeholder">Search artists, songs…</string>
+    <string name="search_recent">Recent Searches</string>
+    <string name="search_empty_title">Nothing matches that yet</string>
+    <string name="search_empty_subtitle">Try searching for an artist, genre, or track mood.</string>
+
+    <!-- Now Playing -->
+    <string name="title_now_playing">Now Playing</string>
+    <string name="audio_quality_label">Audio Quality</string>
+    <string name="audio_quality_high">High · 24-bit Lossless</string>
+    <string name="up_next">Up Next</string>
+
+    <!-- Library & Favorites -->
+    <string name="title_library">Your Library</string>
+    <string name="title_favorites">Favorites</string>
+    <string name="create_playlist">Create Playlist</string>
+    <string name="create_playlist_hint">Playlist title</string>
+    <string name="create_playlist_desc_hint">Mood or description (optional)</string>
+    <string name="action_create">Create</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_play_all">Play All</string>
+    <string name="action_shuffle">Shuffle</string>
+
+    <!-- Profile & Theme -->
+    <string name="user_name">Yohan Maxmilles</string>
+    <string name="user_tier">Premium User</string>
+    <string name="music_journey">Your Music Journey</string>
+    <string name="music_journey_stats">1,250 min listened</string>
+    <string name="menu_settings">Settings</string>
+    <string name="menu_theme">Theme</string>
+    <string name="menu_notifications">Notifications</string>
+    <string name="menu_about">About MILLES MUSIC</string>
+    <string name="menu_help">Help &amp; Support</string>
+    <string name="menu_logout">Log Out</string>
+
+    <!-- Theme screen -->
+    <string name="theme_dark_mode">Dark Mode</string>
+    <string name="theme_light_mode">Light Mode</string>
+    <string name="theme_dynamic_title">Dynamic Theme</string>
+    <string name="theme_dynamic_subtitle">Follow system theme</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_back">Navigate back</string>
+    <string name="cd_search">Search music</string>
+    <string name="cd_profile">Open profile</string>
+    <string name="cd_play">Play</string>
+    <string name="cd_pause">Pause</string>
+    <string name="cd_next">Next track</string>
+    <string name="cd_previous">Previous track</string>
+    <string name="cd_shuffle">Toggle shuffle</string>
+    <string name="cd_repeat">Toggle repeat</string>
+    <string name="cd_favorite">Toggle favorite</string>
+    <string name="cd_more_options">More options</string>
+    <string name="cd_queue">Open playback queue</string>
+    <string name="cd_minimize_player">Minimize player</string>
+    <string name="cd_clear_search">Clear search</string>
+</resources>

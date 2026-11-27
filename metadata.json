@@ -1,0 +1,6 @@
+{
+  "name": "MILLES MUSIC",
+  "description": "A different way to feel music. Premium editorial online music streaming application with a bespoke Lime Green and Lavender design system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
