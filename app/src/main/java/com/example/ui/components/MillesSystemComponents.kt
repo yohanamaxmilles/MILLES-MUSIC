@@ -592,7 +592,7 @@ fun MillesMiniPlayer(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(2.5.dp)
+                .height(2.dp)
                 .background(colors.divider.copy(alpha = 0.5f))
         ) {
             Box(
