@@ -66,6 +66,12 @@ class JamendoMusicSource(
                         val title = item.optString("name", "Unknown track")
                         val artist = item.optString("artist_name", "Unknown artist")
                         val image = item.optString("image").takeIf { it.startsWith("https://") || it.startsWith("http://") }
+                        val trackPageUrl = item.optString("shareurl").takeIf {
+                            it.startsWith("https://") || it.startsWith("http://")
+                        } ?: continue
+                        val licenseUrl = item.optString("license_ccurl").takeIf {
+                            it.startsWith("https://") || it.startsWith("http://")
+                        } ?: continue
                         val duration = item.optInt("duration", 0).coerceAtLeast(0)
                         add(
                             Track(
@@ -78,8 +84,8 @@ class JamendoMusicSource(
                                 artwork = ArtworkDescriptor(imageUrl = image),
                                 streamUrl = audioUrl,
                                 providerName = "Jamendo",
-                                providerTrackUrl = item.optString("shareurl").takeIf { it.isNotBlank() },
-                                licenseUrl = item.optString("license_ccurl").takeIf { it.isNotBlank() }
+                                providerTrackUrl = trackPageUrl,
+                                licenseUrl = licenseUrl
                             )
                         )
                     }
