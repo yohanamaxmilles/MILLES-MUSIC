@@ -17,6 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.media3.session.MediaController
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -58,6 +61,20 @@ fun MillesMusicApp(
     viewModel: MillesMusicViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    DisposableEffect(viewModel, context) {
+        val future = com.example.playback.MillesPlaybackConnector.connect(context)
+        future.addListener({
+            runCatching { future.get() }
+                .onSuccess(viewModel::attachPlaybackController)
+                .onFailure { viewModel.showStatusBanner("Unable to connect to audio player") }
+        }, context.mainExecutor)
+        onDispose {
+            viewModel.detachPlaybackController()
+            MediaController.releaseFuture(future)
+        }
+    }
 
     MillesTheme(themeMode = uiState.themeMode) {
         val palette = LocalMillesPalette.current
