@@ -61,5 +61,6 @@ class ExampleUnitTest {
         val playerUiState = vm.uiState.value.toPlayerUiState()
         assertTrue(playerUiState.isPlaying)
         assertEquals(vm.uiState.value.currentTrack.id, playerUiState.track.id)
+        assertTrue(BuildConfig.JAMENDO_CLIENT_ID.isNotBlank())
     }
 }

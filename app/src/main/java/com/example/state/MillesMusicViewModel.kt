@@ -3,6 +3,7 @@ package com.example.state
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.model.Album
 import com.example.model.Artist
 import com.example.model.ArtworkDescriptor
@@ -71,6 +72,11 @@ enum class ProfileSheetType {
 }
 
 class MillesMusicViewModel : ViewModel() {
+
+    private val jamendoClientId: String = BuildConfig.JAMENDO_CLIENT_ID
+
+    val isJamendoConfigured: Boolean
+        get() = jamendoClientId.isNotBlank() && jamendoClientId != "MY_JAMENDO_CLIENT_ID"
 
     private val _uiState = MutableStateFlow(MillesUiState())
     val uiState: StateFlow<MillesUiState> = _uiState.asStateFlow()
