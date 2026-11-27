@@ -103,9 +103,9 @@ fun MillesMusicApp(
                     onToggleFavorite = { viewModel.toggleFavorite(uiState.currentTrack.id) },
                     onToggleShuffle = viewModel::toggleShuffle,
                     onCycleRepeat = viewModel::cycleRepeatMode,
-                    onOpenQueue = { viewModel.setQueueSheetOpen(true) },
                     onOpenAudioQuality = { viewModel.setAudioQualitySheetOpen(true) },
-                    onOpenTrackOptions = { viewModel.openTrackOptions(uiState.currentTrack) }
+                    onOpenTrackOptions = { viewModel.openTrackOptions(uiState.currentTrack) },
+                    onSelectTrack = { selected -> viewModel.playTrack(selected, openPlayer = true) }
                 )
             }
 
