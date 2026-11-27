@@ -45,7 +45,10 @@ data class Track(
     val isNewRelease: Boolean = false,
     val isUpbeat: Boolean = false,
     /** Direct, provider-authorised audio stream URL. Null for catalogue-only/sample entries. */
-    val streamUrl: String? = null
+    val streamUrl: String? = null,
+    val providerName: String? = null,
+    val providerTrackUrl: String? = null,
+    val licenseUrl: String? = null
 )
 
 @Immutable
