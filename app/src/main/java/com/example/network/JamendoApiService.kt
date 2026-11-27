@@ -17,23 +17,63 @@ data class JamendoTracksResponse(
 )
 
 @JsonClass(generateAdapter = true)
+data class JamendoArtistsResponse(
+    val headers: JamendoHeadersDto? = null,
+    val results: List<JamendoArtistDto> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class JamendoAlbumsResponse(
+    val headers: JamendoHeadersDto? = null,
+    val results: List<JamendoAlbumDto> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
 data class JamendoHeadersDto(
     val status: String? = null,
     val code: Int? = null,
-    @Json(name = "error_message") val errorMessage: String? = null
+    @Json(name = "error_message") val errorMessage: String? = null,
+    @Json(name = "results_count") val resultsCount: Int? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class JamendoTrackDto(
     val id: String,
     val name: String,
-    val duration: Int = 180,
-    @Json(name = "artist_name") val artistName: String = "Independent Artist",
-    @Json(name = "album_name") val albumName: String = "Jamendo Release",
+    val duration: Int = 0,
+    @Json(name = "artist_id") val artistId: String? = null,
+    @Json(name = "artist_name") val artistName: String = "",
+    @Json(name = "album_id") val albumId: String? = null,
+    @Json(name = "album_name") val albumName: String = "",
+    @Json(name = "releasedate") val releaseDate: String? = null,
     @Json(name = "album_image") val albumImage: String? = null,
     val image: String? = null,
     val audio: String? = null,
+    @Json(name = "shareurl") val shareUrl: String? = null,
+    @Json(name = "license_ccurl") val licenseCcUrl: String? = null,
+    @Json(name = "prourl") val proUrl: String? = null,
     val musicinfo: JamendoMusicInfoDto? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class JamendoArtistDto(
+    val id: String,
+    val name: String,
+    val website: String? = null,
+    @Json(name = "joindate") val joinDate: String? = null,
+    val image: String? = null,
+    @Json(name = "shareurl") val shareUrl: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class JamendoAlbumDto(
+    val id: String,
+    val name: String,
+    @Json(name = "releasedate") val releaseDate: String? = null,
+    @Json(name = "artist_id") val artistId: String? = null,
+    @Json(name = "artist_name") val artistName: String = "",
+    val image: String? = null,
+    @Json(name = "shareurl") val shareUrl: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -54,11 +94,34 @@ interface JamendoApiService {
         @Query("format") format: String = "json",
         @Query("limit") limit: Int = 20,
         @Query("audioformat") audioFormat: String = "mp32",
-        @Query("include") include: String = "musicinfo",
+        @Query("include") include: String = "musicinfo+licenses",
         @Query("order") order: String? = null,
         @Query("search") search: String? = null,
-        @Query("tags") tags: String? = null
+        @Query("tags") tags: String? = null,
+        @Query("featured") featured: Int? = null,
+        @Query("artist_id") artistId: String? = null,
+        @Query("album_id") albumId: String? = null
     ): JamendoTracksResponse
+
+    @GET("artists/")
+    suspend fun getArtists(
+        @Query("client_id") clientId: String,
+        @Query("format") format: String = "json",
+        @Query("limit") limit: Int = 20,
+        @Query("order") order: String? = "popularity_week",
+        @Query("namesearch") nameSearch: String? = null,
+        @Query("hasimage") hasImage: Boolean? = true
+    ): JamendoArtistsResponse
+
+    @GET("albums/")
+    suspend fun getAlbums(
+        @Query("client_id") clientId: String,
+        @Query("format") format: String = "json",
+        @Query("limit") limit: Int = 20,
+        @Query("order") order: String? = "popularity_week",
+        @Query("namesearch") nameSearch: String? = null,
+        @Query("artist_id") artistId: String? = null
+    ): JamendoAlbumsResponse
 }
 
 object JamendoApiFactory {

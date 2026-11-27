@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -57,14 +60,17 @@ enum class LibrarySegment(val label: String) {
     Liked("Liked Songs")
 }
 
-/** One Library for everything saved. Favorites lives here as "Liked Songs". */
+/** One Library for everything saved and Jamendo Artists/Albums. */
 @Composable
 fun LibraryScreen(
     liked: List<Track>,
     playlists: List<Collection>,
     albums: List<Collection>,
     artists: List<Collection>,
-    activeTrackId: String,
+    isCatalogLoading: Boolean,
+    catalogErrorMessage: String?,
+    activeTrackId: String?,
+    onRetryCatalog: () -> Unit,
     onTrack: (Track) -> Unit,
     onMoreTrack: (Track) -> Unit,
     onCollection: (Collection, LibrarySegment) -> Unit,
@@ -98,24 +104,33 @@ fun LibraryScreen(
             Spacer(Modifier.height(12.dp))
         }
         if (seg == LibrarySegment.Liked) {
-            item {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ActionPill("Play", Icons.Rounded.PlayArrow, true, Modifier.weight(1f), onPlayLiked)
-                    ActionPill("Shuffle", Icons.Rounded.Shuffle, false, Modifier.weight(1f), onShuffleLiked)
+            if (liked.isEmpty()) {
+                item {
+                    LibraryEmptyCard(
+                        title = "No liked songs yet",
+                        subtitle = "Tap the heart icon on any Jamendo track to save it here."
+                    )
                 }
-            }
-            items(liked, key = { it.id }) { track ->
-                TrackRow(
-                    track = track,
-                    active = track.id == activeTrackId,
-                    onMore = { onMoreTrack(track) },
-                    onClick = { onTrack(track) }
-                )
+            } else {
+                item {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ActionPill("Play", Icons.Rounded.PlayArrow, true, Modifier.weight(1f), onPlayLiked)
+                        ActionPill("Shuffle", Icons.Rounded.Shuffle, false, Modifier.weight(1f), onShuffleLiked)
+                    }
+                }
+                items(liked, key = { it.id }) { track ->
+                    TrackRow(
+                        track = track,
+                        active = track.id == activeTrackId,
+                        onMore = { onMoreTrack(track) },
+                        onClick = { onTrack(track) }
+                    )
+                }
             }
         } else {
             val list = when (seg) {
@@ -124,12 +139,93 @@ fun LibraryScreen(
                 LibrarySegment.Artists -> artists
                 LibrarySegment.Liked -> emptyList()
             }
-            items(list, key = { it.id }) { collection ->
-                CollectionRow(collection, round = seg == LibrarySegment.Artists) {
-                    onCollection(collection, seg)
+            if (list.isEmpty()) {
+                item {
+                    when {
+                        seg == LibrarySegment.Playlists -> {
+                            LibraryEmptyCard(
+                                title = "No playlists yet",
+                                subtitle = "Tap + above to create your first playlist."
+                            )
+                        }
+                        isCatalogLoading -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(palette.surface)
+                                    .border(1.dp, palette.stroke, RoundedCornerShape(20.dp))
+                                    .padding(18.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    color = Milles.Lime,
+                                    strokeWidth = 2.5.dp,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text("Loading ${seg.label.lowercase()} from Jamendo…", color = palette.textPrimary)
+                            }
+                        }
+                        catalogErrorMessage != null -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(palette.surface)
+                                    .border(1.dp, palette.stroke, RoundedCornerShape(20.dp))
+                                    .padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text("Unable to load ${seg.label.lowercase()}", style = MaterialTheme.typography.titleMedium, color = palette.textPrimary)
+                                Text(catalogErrorMessage, style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(Milles.Lime)
+                                        .clickable(onClick = onRetryCatalog)
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    Text("Retry", fontWeight = FontWeight.SemiBold, color = Color.Black)
+                                }
+                            }
+                        }
+                        else -> {
+                            LibraryEmptyCard(
+                                title = "No ${seg.label.lowercase()} available",
+                                subtitle = "Try refreshing when connected to Jamendo."
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(list, key = { it.id }) { collection ->
+                    CollectionRow(collection, round = seg == LibrarySegment.Artists) {
+                        onCollection(collection, seg)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LibraryEmptyCard(title: String, subtitle: String) {
+    val palette = LocalMillesPalette.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(palette.surface)
+            .border(1.dp, palette.stroke, RoundedCornerShape(22.dp))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = palette.textPrimary)
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary)
     }
 }
 

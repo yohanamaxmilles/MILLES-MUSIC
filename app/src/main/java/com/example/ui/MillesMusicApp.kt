@@ -22,11 +22,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.R
-import com.example.model.SampleCatalog
+import com.example.model.JamendoGenres
 import com.example.model.SecondaryDestination
 import com.example.state.MillesMusicViewModel
 import com.example.state.MillesUiState
@@ -49,13 +50,16 @@ import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.SearchScreen
 import com.example.ui.screens.ThemeScreen
 import com.example.ui.screens.TrackOptionsSheet
+import com.example.ui.screens.YouTubePlayerOverlay
 import com.example.ui.theme.LocalMillesPalette
 import com.example.ui.theme.Milles
 import com.example.ui.theme.MillesTheme
 
 @Composable
 fun MillesMusicApp(
-    viewModel: MillesMusicViewModel = viewModel()
+    viewModel: MillesMusicViewModel = viewModel(
+        factory = MillesMusicViewModel.factory(LocalContext.current.applicationContext)
+    )
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -67,13 +71,17 @@ fun MillesMusicApp(
             object : PlayerActions {
                 override fun onBack() = viewModel.closeNowPlaying()
                 override fun onPlayPause() = viewModel.togglePlayPause()
-                override fun onNext() = viewModel.skipToNext(autoTriggered = false)
+                override fun onNext() = viewModel.skipToNext()
                 override fun onPrevious() = viewModel.skipToPrevious()
                 override fun onSeek(positionMs: Long) = viewModel.seekMs(positionMs)
-                override fun onLike() = viewModel.toggleFavorite(viewModel.uiState.value.currentTrack.id)
+                override fun onLike() {
+                    viewModel.uiState.value.currentTrack?.id?.let(viewModel::toggleFavorite)
+                }
                 override fun onShuffle() = viewModel.toggleShuffle()
                 override fun onRepeat() = viewModel.cycleRepeatMode()
-                override fun onMore() = viewModel.openTrackOptions(viewModel.uiState.value.currentTrack)
+                override fun onMore() {
+                    viewModel.uiState.value.currentTrack?.let(viewModel::openTrackOptions)
+                }
                 override fun onQualityClick() = viewModel.setAudioQualitySheetOpen(true)
                 override fun onTrackClick(track: Track) {
                     viewModel.findTrackById(track.id)?.let { domainTrack ->
@@ -97,13 +105,18 @@ fun MillesMusicApp(
                     is SecondaryDestination.Profile -> {
                         ProfileScreen(
                             themeMode = uiState.themeMode,
+                            favoriteCount = uiState.favoriteTrackIds.size,
+                            playlistCount = uiState.userPlaylists.size,
+                            recentlyPlayedCount = uiState.recentlyPlayedTracks.size,
                             onBack = { viewModel.navigateBack() },
                             onOpenThemeSettings = { viewModel.navigateTo(SecondaryDestination.ThemeSettings) },
                             onOpenSheet = viewModel::openProfileSheet,
-                            onLogoutNotice = { viewModel.showStatusBanner("Account sync arrives in Phase 2") }
+                            onLogoutNotice = {
+                                viewModel.showStatusBanner("Streaming via public Jamendo & Audius catalogs")
+                            }
                         )
                     }
-                    is SecondaryDestination.ThemeSettings -> {
+                    else -> {
                         ThemeScreen(
                             themeMode = uiState.themeMode,
                             onSelectThemeMode = viewModel::selectThemeMode,
@@ -111,25 +124,27 @@ fun MillesMusicApp(
                             onBack = { viewModel.navigateBack() }
                         )
                     }
-                    else -> Unit
                 }
             } else {
+                val activeTrack = uiState.currentTrack
                 MillesShell(
                     tab = uiState.activeTab,
                     onTab = viewModel::selectTab,
-                    miniPlayer = {
-                        val progress = (uiState.progressSeconds.toFloat() /
-                            uiState.currentTrack.durationSeconds.coerceAtLeast(1)).coerceIn(0f, 1f)
-                        MiniPlayer(
-                            track = playerUiState.track,
-                            isPlaying = uiState.isPlaying,
-                            progress = progress,
-                            isLiked = uiState.isCurrentTrackFavorite,
-                            onOpen = viewModel::openNowPlaying,
-                            onPlayPause = viewModel::togglePlayPause,
-                            onLike = { viewModel.toggleFavorite(uiState.currentTrack.id) }
-                        )
-                    }
+                    miniPlayer = if (playerUiState != null && activeTrack != null) {
+                        {
+                            val progress = (uiState.progressSeconds.toFloat() /
+                                activeTrack.durationSeconds.coerceAtLeast(1)).coerceIn(0f, 1f)
+                            MiniPlayer(
+                                track = playerUiState.track,
+                                isPlaying = uiState.isPlaying,
+                                progress = progress,
+                                isLiked = uiState.isCurrentTrackFavorite,
+                                onOpen = viewModel::openNowPlaying,
+                                onPlayPause = viewModel::togglePlayPause,
+                                onLike = { viewModel.toggleFavorite(activeTrack.id) }
+                            )
+                        }
+                    } else null
                 ) { bottomInset ->
                     AnimatedContent(
                         targetState = Pair(uiState.activeTab, activeSecondary),
@@ -157,14 +172,30 @@ fun MillesMusicApp(
 
             // Full-screen Now Playing Slide-Up Overlay
             AnimatedVisibility(
-                visible = uiState.isNowPlayingOpen,
+                visible = uiState.isNowPlayingOpen && playerUiState != null && uiState.activeYouTubeTrack == null,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
-                NowPlayingScreen(
-                    state = playerUiState,
-                    actions = playerActions
-                )
+                playerUiState?.let { activePlayerState ->
+                    NowPlayingScreen(
+                        state = activePlayerState,
+                        actions = playerActions
+                    )
+                }
+            }
+
+            // Dedicated Official YouTube Embedded Player Overlay (never routed through Media3)
+            AnimatedVisibility(
+                visible = uiState.activeYouTubeTrack != null,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+            ) {
+                uiState.activeYouTubeTrack?.let { ytTrack ->
+                    YouTubePlayerOverlay(
+                        track = ytTrack,
+                        onDismiss = viewModel::closeYouTubePlayer
+                    )
+                }
             }
 
             // Modal Overlay Sheets
@@ -242,47 +273,83 @@ private fun TabContent(
     viewModel: MillesMusicViewModel,
     bottomInset: androidx.compose.ui.unit.Dp
 ) {
-    val trendingTracks = remember(uiState.trendingTracks) {
-        uiState.trendingTracks.map { it.toUiTrack() }
-    }
-    val madeForYouTracks = remember(uiState.topCharts) {
-        uiState.topCharts.reversed().take(6).map { it.toUiTrack() }
-    }
-    val newReleases = remember(uiState.newReleases) {
-        uiState.newReleases.map { it.toUiTrack() }
-    }
-    val topCharts = remember(uiState.topCharts) {
-        uiState.topCharts.map { it.toUiTrack() }
-    }
+    val popularUi = remember(uiState.popularTracks) { uiState.popularTracks.map { it.toUiTrack() } }
+    val recommendedUi = remember(uiState.recommendedTracks) { uiState.recommendedTracks.map { it.toUiTrack() } }
+    val newReleasesUi = remember(uiState.newReleases) { uiState.newReleases.map { it.toUiTrack() } }
+    val audiusTrendingUi = remember(uiState.audiusTrendingTracks) { uiState.audiusTrendingTracks.map { it.toUiTrack() } }
+    val recentlyPlayedUi = remember(uiState.recentlyPlayedTracks) { uiState.recentlyPlayedTracks.map { it.toUiTrack() } }
+    val recentlyAddedAlbumsUi = remember(uiState.recentlyAddedAlbums) { uiState.recentlyAddedAlbums.map { it.toUiCollection() } }
+    val genreCols = remember { JamendoGenres.genres.map { it.toUiCollection() } }
 
     when (tab) {
         MillesTab.Home -> {
             HomeScreen(
                 heroCover = R.drawable.img_hero_music,
                 avatar = R.drawable.img_cover_midnight,
-                trending = trendingTracks,
-                madeForYou = madeForYouTracks,
-                isHeroPlaying = uiState.isPlaying && uiState.playbackSource == "Good Music, Every Day",
+                isLoading = uiState.isCatalogLoading,
+                errorMessage = uiState.catalogErrorMessage,
+                popular = popularUi,
+                recommended = recommendedUi,
+                newReleases = newReleasesUi,
+                audiusTrending = audiusTrendingUi,
+                recentlyPlayed = recentlyPlayedUi,
+                recentlyAddedAlbums = recentlyAddedAlbumsUi,
+                genres = genreCols,
+                isHeroPlaying = uiState.isPlaying && (
+                    uiState.playbackSource == "Popular on Jamendo" ||
+                        uiState.playbackSource == "Trending on Audius"
+                    ),
                 onPlayHero = viewModel::playHeroMix,
-                onTrack = { uiTrack ->
+                onRetry = viewModel::retryCatalogLoad,
+                onTrack = { uiTrack, sectionSource ->
                     viewModel.findTrackById(uiTrack.id)?.let { track ->
-                        viewModel.playTrack(track, source = "Trending Now")
+                        val sectionQueue = when (sectionSource) {
+                            "Popular Tracks" -> uiState.popularTracks
+                            "Recommended Music" -> uiState.recommendedTracks
+                            "New Releases" -> uiState.newReleases
+                            "Trending on Audius" -> uiState.audiusTrendingTracks
+                            "Recently Played" -> uiState.recentlyPlayedTracks
+                            else -> null
+                        }
+                        viewModel.playTrack(track, customQueue = sectionQueue, source = sectionSource)
                     }
                 },
+                onAlbum = { album ->
+                    viewModel.navigateTo(SecondaryDestination.AlbumDetail(album.id))
+                },
+                onGenre = { genre ->
+                    viewModel.navigateTo(SecondaryDestination.GenreDetail(genre.id))
+                },
                 onProfile = { viewModel.navigateTo(SecondaryDestination.Profile) },
-                onSeeAllTrending = {
+                onSeeAllPopular = {
                     viewModel.navigateTo(
                         SecondaryDestination.CollectionOverview(
-                            title = "Trending Now",
-                            trackIds = uiState.trendingTracks.map { it.id }
+                            title = "Popular Tracks",
+                            trackIds = uiState.popularTracks.map { it.id }
                         )
                     )
                 },
-                onSeeAllMadeForYou = {
+                onSeeAllRecommended = {
                     viewModel.navigateTo(
                         SecondaryDestination.CollectionOverview(
-                            title = "Made for You",
-                            trackIds = uiState.topCharts.map { it.id }
+                            title = "Recommended Music",
+                            trackIds = uiState.recommendedTracks.map { it.id }
+                        )
+                    )
+                },
+                onSeeAllNewReleases = {
+                    viewModel.navigateTo(
+                        SecondaryDestination.CollectionOverview(
+                            title = "New Releases",
+                            trackIds = uiState.newReleases.map { it.id }
+                        )
+                    )
+                },
+                onSeeAllAudiusTrending = {
+                    viewModel.navigateTo(
+                        SecondaryDestination.CollectionOverview(
+                            title = "Trending on Audius",
+                            trackIds = uiState.audiusTrendingTracks.map { it.id }
                         )
                     )
                 },
@@ -292,12 +359,15 @@ private fun TabContent(
 
         MillesTab.Explore -> {
             ExploreScreen(
-                newReleases = newReleases,
-                topCharts = topCharts,
-                activeTrackId = uiState.currentTrack.id,
+                isLoading = uiState.isCatalogLoading,
+                errorMessage = uiState.catalogErrorMessage,
+                newReleases = newReleasesUi,
+                topCharts = popularUi,
+                activeTrackId = uiState.currentTrack?.id,
+                onRetry = viewModel::retryCatalogLoad,
                 onTrack = { uiTrack ->
                     viewModel.findTrackById(uiTrack.id)?.let { track ->
-                        viewModel.playTrack(track, source = "Top Charts")
+                        viewModel.playTrack(track, customQueue = uiState.popularTracks, source = "Popular on Jamendo")
                     }
                 },
                 onMoreTrack = { uiTrack ->
@@ -310,15 +380,18 @@ private fun TabContent(
         MillesTab.Library -> {
             val likedUi = remember(uiState.favoriteTracks) { uiState.favoriteTracks.map { it.toUiTrack() } }
             val playlistCols = remember(uiState.userPlaylists) { uiState.userPlaylists.map { it.toUiCollection() } }
-            val albumCols = remember { SampleCatalog.albums.map { it.toUiCollection() } }
-            val artistCols = remember { SampleCatalog.artists.map { it.toUiCollection() } }
+            val albumCols = remember(uiState.albums) { uiState.albums.map { it.toUiCollection() } }
+            val artistCols = remember(uiState.artists) { uiState.artists.map { it.toUiCollection() } }
 
             LibraryScreen(
                 liked = likedUi,
                 playlists = playlistCols,
                 albums = albumCols,
                 artists = artistCols,
-                activeTrackId = uiState.currentTrack.id,
+                isCatalogLoading = uiState.isCatalogLoading,
+                catalogErrorMessage = uiState.catalogErrorMessage,
+                activeTrackId = uiState.currentTrack?.id,
+                onRetryCatalog = viewModel::retryCatalogLoad,
                 onTrack = { uiTrack ->
                     viewModel.findTrackById(uiTrack.id)?.let { track ->
                         viewModel.playTrack(track, customQueue = uiState.favoriteTracks, source = "Liked Songs")
@@ -349,24 +422,37 @@ private fun TabContent(
 
         MillesTab.Search -> {
             val query = uiState.searchQuery
-            val results = remember(uiState.searchResults) {
-                uiState.searchResults.map { it.toUiTrack() }
-            }
-            val genreCols = remember { SampleCatalog.genres.map { it.toUiCollection() } }
+            val results = remember(uiState.searchResults) { uiState.searchResults.map { it.toUiTrack() } }
+            val searchArtistCols = remember(uiState.searchArtists) { uiState.searchArtists.map { it.toUiCollection() } }
+            val searchAlbumCols = remember(uiState.searchAlbums) { uiState.searchAlbums.map { it.toUiCollection() } }
 
             SearchScreen(
                 query = query,
                 onQuery = viewModel::updateSearchQuery,
+                selectedProviderFilter = uiState.searchProviderFilter,
+                onSelectProviderFilter = viewModel::selectSearchProviderFilter,
+                providerNotices = uiState.providerSearchNotices,
+                isSearching = uiState.isSearching,
+                errorMessage = uiState.searchErrorMessage,
                 results = results,
+                artists = searchArtistCols,
+                albums = searchAlbumCols,
                 genres = genreCols,
-                activeTrackId = uiState.currentTrack.id,
+                activeTrackId = uiState.currentTrack?.id,
+                onRetry = { viewModel.updateSearchQuery(query) },
                 onTrack = { uiTrack ->
                     viewModel.findTrackById(uiTrack.id)?.let { track ->
-                        viewModel.playTrack(track, source = "Search")
+                        viewModel.playTrack(track, customQueue = uiState.searchResults, source = "Search")
                     }
                 },
                 onMoreTrack = { uiTrack ->
                     viewModel.findTrackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                },
+                onArtist = { artistCol ->
+                    viewModel.navigateTo(SecondaryDestination.ArtistDetail(artistCol.id))
+                },
+                onAlbum = { albumCol ->
+                    viewModel.navigateTo(SecondaryDestination.AlbumDetail(albumCol.id))
                 },
                 onGenre = { genreCol ->
                     viewModel.navigateTo(SecondaryDestination.GenreDetail(genreCol.id))
@@ -387,14 +473,14 @@ private fun DetailContent(
     when (destination) {
         is SecondaryDestination.PlaylistDetail -> {
             val playlist = viewModel.findPlaylist(destination.playlistId)
-            val tracks = viewModel.findTracksByIds(playlist?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(4) }
+            val tracks = viewModel.findTracksByIds(playlist?.trackIds.orEmpty())
             CollectionDetailScreen(
                 title = playlist?.title ?: "Playlist",
                 subtitle = playlist?.subtitle ?: "",
                 coverUrl = playlist?.artwork?.imageRes ?: R.drawable.img_cover_afro,
                 tracks = tracks,
                 isCircularArtwork = false,
-                currentTrackId = uiState.currentTrack.id,
+                currentTrackId = uiState.currentTrack?.id,
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
                     viewModel.playTracksCollection(tracks, source = playlist?.title ?: "Playlist", shuffled = shuffled, openPlayer = true)
@@ -409,17 +495,17 @@ private fun DetailContent(
 
         is SecondaryDestination.GenreDetail -> {
             val genre = viewModel.findGenre(destination.genreId)
-            val liveGenreTracks = uiState.genreTracksByGenreId[destination.genreId].orEmpty()
-            val tracks = liveGenreTracks.ifEmpty {
-                viewModel.findTracksByIds(genre?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(4) }
-            }
+            val tracks = uiState.genreTracksByGenreId[destination.genreId].orEmpty()
             CollectionDetailScreen(
                 title = genre?.name ?: "Genre",
                 subtitle = genre?.subtitle ?: "",
-                coverUrl = genre?.artwork?.imageRes ?: R.drawable.img_cover_afro,
+                coverUrl = tracks.firstOrNull()?.coverUrl ?: genre?.artwork?.imageRes ?: R.drawable.img_cover_chill,
                 tracks = tracks,
                 isCircularArtwork = false,
-                currentTrackId = uiState.currentTrack.id,
+                currentTrackId = uiState.currentTrack?.id,
+                isLoading = uiState.detailLoadingKey == destination.genreId,
+                errorMessage = uiState.detailErrorMessage,
+                onRetry = { viewModel.retrySecondaryLoad(destination) },
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
                     viewModel.playTracksCollection(tracks, source = genre?.name ?: "Genre", shuffled = shuffled, openPlayer = true)
@@ -434,16 +520,17 @@ private fun DetailContent(
 
         is SecondaryDestination.ArtistDetail -> {
             val artist = viewModel.findArtist(destination.artistId)
-            val tracks = SampleCatalog.tracks.filter {
-                artist != null && it.artist.contains(artist.name, ignoreCase = true)
-            }.ifEmpty { SampleCatalog.tracks.take(3) }
+            val tracks = uiState.artistTracksByArtistId[destination.artistId].orEmpty()
             CollectionDetailScreen(
                 title = artist?.name ?: "Artist",
-                subtitle = artist?.monthlyListeners ?: "",
-                coverUrl = artist?.artwork?.imageRes ?: R.drawable.img_cover_midnight,
+                subtitle = artist?.subtitle ?: "Jamendo Artist",
+                coverUrl = artist?.imageUrl ?: artist?.artwork?.imageRes ?: R.drawable.img_cover_midnight,
                 tracks = tracks,
                 isCircularArtwork = true,
-                currentTrackId = uiState.currentTrack.id,
+                currentTrackId = uiState.currentTrack?.id,
+                isLoading = uiState.detailLoadingKey == destination.artistId,
+                errorMessage = uiState.detailErrorMessage,
+                onRetry = { viewModel.retrySecondaryLoad(destination) },
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
                     viewModel.playTracksCollection(tracks, source = artist?.name ?: "Artist", shuffled = shuffled, openPlayer = true)
@@ -458,14 +545,17 @@ private fun DetailContent(
 
         is SecondaryDestination.AlbumDetail -> {
             val album = viewModel.findAlbum(destination.albumId)
-            val tracks = viewModel.findTracksByIds(album?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(3) }
+            val tracks = uiState.albumTracksByAlbumId[destination.albumId].orEmpty()
             CollectionDetailScreen(
                 title = album?.title ?: "Album",
-                subtitle = "${album?.artist ?: ""} · ${album?.year ?: 2026}",
-                coverUrl = album?.artwork?.imageRes ?: R.drawable.img_cover_chill,
+                subtitle = listOfNotNull(album?.artist, album?.releaseDate?.take(4)).joinToString(" · "),
+                coverUrl = album?.coverUrl ?: album?.artwork?.imageRes ?: R.drawable.img_cover_chill,
                 tracks = tracks,
                 isCircularArtwork = false,
-                currentTrackId = uiState.currentTrack.id,
+                currentTrackId = uiState.currentTrack?.id,
+                isLoading = uiState.detailLoadingKey == destination.albumId,
+                errorMessage = uiState.detailErrorMessage,
+                onRetry = { viewModel.retrySecondaryLoad(destination) },
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
                     viewModel.playTracksCollection(tracks, source = album?.title ?: "Album", shuffled = shuffled, openPlayer = true)
@@ -479,14 +569,14 @@ private fun DetailContent(
         }
 
         is SecondaryDestination.CollectionOverview -> {
-            val tracks = viewModel.findTracksByIds(destination.trackIds).ifEmpty { uiState.topCharts }
+            val tracks = viewModel.findTracksByIds(destination.trackIds)
             CollectionDetailScreen(
                 title = destination.title,
-                subtitle = "${tracks.size} curated tracks",
-                coverUrl = tracks.first().coverUrl ?: tracks.first().artwork.imageRes ?: R.drawable.img_hero_music,
+                subtitle = "${tracks.size} tracks",
+                coverUrl = tracks.firstOrNull()?.coverUrl ?: tracks.firstOrNull()?.artwork?.imageRes ?: R.drawable.img_hero_music,
                 tracks = tracks,
                 isCircularArtwork = false,
-                currentTrackId = uiState.currentTrack.id,
+                currentTrackId = uiState.currentTrack?.id,
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
                     viewModel.playTracksCollection(tracks, source = destination.title, shuffled = shuffled, openPlayer = true)

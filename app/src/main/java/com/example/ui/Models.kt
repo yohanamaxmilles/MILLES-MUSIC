@@ -1,12 +1,20 @@
 package com.example.ui
 
-/** UI models mapped from MillesMusicViewModel & SampleCatalog. */
+import com.example.model.ProviderId
+
+/** UI models mapped from MillesMusicViewModel and live provider responses. */
 data class Track(
     val id: String,
     val title: String,
     val artist: String,
     val coverUrl: Any?,
-    val durationMs: Long
+    val durationMs: Long,
+    val album: String = "",
+    val attribution: String = "",
+    val licenseUrl: String? = null,
+    val providerId: ProviderId = ProviderId.JAMENDO,
+    val providerLabel: String = providerId.displayName,
+    val isVideoEmbedOnly: Boolean = false
 )
 
 data class LyricLine(val timeMs: Long, val text: String)
@@ -14,11 +22,14 @@ data class LyricLine(val timeMs: Long, val text: String)
 data class PlayerUiState(
     val track: Track,
     val isPlaying: Boolean = false,
+    val isBuffering: Boolean = false,
+    val playbackError: String? = null,
     val positionMs: Long = 0,
     val isLiked: Boolean = false,
     val shuffle: Boolean = false,
     val repeat: Boolean = false,
-    val quality: String = "High",
+    val repeatOne: Boolean = false,
+    val quality: String = "MP3 320",
     val source: String = "",
     val queue: List<Track> = emptyList(),
     val related: List<Track> = emptyList(),
@@ -35,5 +46,6 @@ data class Collection(
     val id: String,
     val title: String,
     val subtitle: String = "",
-    val coverUrl: Any? = null
+    val coverUrl: Any? = null,
+    val providerId: ProviderId = ProviderId.JAMENDO
 )

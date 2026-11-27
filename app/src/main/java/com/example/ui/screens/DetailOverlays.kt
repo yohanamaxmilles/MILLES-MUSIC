@@ -25,13 +25,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -49,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -59,10 +62,13 @@ import coil.compose.AsyncImage
 import com.example.R
 import com.example.model.AudioQuality
 import com.example.model.Playlist
+import com.example.model.ProviderId
 import com.example.model.Track
 import com.example.state.ProfileSheetType
+import com.example.state.formatDuration
 import com.example.state.toUiTrack
 import com.example.ui.components.GlassIconButton
+import com.example.ui.components.ProviderBadgeChip
 import com.example.ui.components.TrackRow
 import com.example.ui.theme.LocalMillesPalette
 import com.example.ui.theme.Milles
@@ -74,7 +80,10 @@ fun CollectionDetailScreen(
     coverUrl: Any?,
     tracks: List<Track>,
     isCircularArtwork: Boolean,
-    currentTrackId: String,
+    currentTrackId: String?,
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
+    onRetry: (() -> Unit)? = null,
     onBack: () -> Unit,
     onPlayAll: (Boolean) -> Unit,
     onPlayTrack: (Track) -> Unit,
@@ -151,15 +160,24 @@ fun CollectionDetailScreen(
                             .weight(1f)
                             .height(48.dp)
                             .clip(CircleShape)
-                            .background(Milles.Lime)
+                            .background(if (tracks.isNotEmpty()) Milles.Lime else palette.surfaceHigh)
                             .clickable(enabled = tracks.isNotEmpty()) { onPlayAll(false) }
                             .testTag("collection_play_all"),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
+                        Icon(
+                            Icons.Rounded.PlayArrow,
+                            contentDescription = null,
+                            tint = if (tracks.isNotEmpty()) Color.Black else palette.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
                         Spacer(Modifier.width(6.dp))
-                        Text("Play", fontWeight = FontWeight.SemiBold, color = Color.Black)
+                        Text(
+                            "Play",
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (tracks.isNotEmpty()) Color.Black else palette.textSecondary
+                        )
                     }
 
                     val unselectedBg = if (palette.isDark) Color(0x1FFFFFFF) else palette.surfaceHigh
@@ -182,13 +200,67 @@ fun CollectionDetailScreen(
             }
         }
 
-        items(tracks, key = { it.id }) { track ->
-            TrackRow(
-                track = track.toUiTrack(),
-                active = track.id == currentTrackId,
-                onMore = { onOpenTrackOptions(track) },
-                onClick = { onPlayTrack(track) }
-            )
+        if (isLoading && tracks.isEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = Milles.Lime,
+                        strokeWidth = 2.5.dp,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text("Loading tracks…", color = palette.textSecondary)
+                }
+            }
+        } else if (errorMessage != null && tracks.isEmpty()) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.stroke, RoundedCornerShape(20.dp))
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(errorMessage, color = palette.textPrimary)
+                    if (onRetry != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Milles.Lime)
+                                .clickable(onClick = onRetry)
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text("Retry", fontWeight = FontWeight.SemiBold, color = Color.Black)
+                        }
+                    }
+                }
+            }
+        } else if (tracks.isEmpty()) {
+            item {
+                Text(
+                    "No tracks found in this collection.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textSecondary,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                )
+            }
+        } else {
+            items(tracks, key = { it.id }) { track ->
+                TrackRow(
+                    track = track.toUiTrack(),
+                    active = track.id == currentTrackId,
+                    onMore = { onOpenTrackOptions(track) },
+                    onClick = { onPlayTrack(track) }
+                )
+            }
         }
     }
 }
@@ -380,6 +452,7 @@ fun TrackOptionsSheet(
     onDismiss: () -> Unit
 ) {
     val palette = LocalMillesPalette.current
+    val uriHandler = LocalUriHandler.current
     MillesSheetContainer(title = track.title, onDismiss = onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
@@ -394,7 +467,72 @@ fun TrackOptionsSheet(
                 )
                 Column {
                     Text(track.artist, style = MaterialTheme.typography.titleMedium, color = palette.textPrimary)
-                    Text("${track.album} · ${track.genre}", style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary)
+                    val detailParts = listOfNotNull(
+                        track.album.takeIf { it.isNotBlank() },
+                        track.genre.takeIf { it.isNotBlank() },
+                        formatDuration(track.durationSeconds),
+                        track.releaseDate?.take(4)
+                    )
+                    Text(detailParts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary)
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(palette.surfaceHigh)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Provider, License & Attribution", style = MaterialTheme.typography.labelSmall, color = Milles.Lime)
+                    ProviderBadgeChip(providerId = track.providerId)
+                }
+                Text(track.licenseType, style = MaterialTheme.typography.bodyMedium, color = palette.textPrimary)
+                if (track.attributionLabel != track.licenseType) {
+                    Text(track.attributionLabel, style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary)
+                }
+                Text(
+                    text = if (track.isCommercialLicensed) {
+                        "Commercial use: Permitted under license terms"
+                    } else {
+                        "Commercial use: Not permitted without separate rights"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textSecondary
+                )
+                track.territoryRestrictions?.let { restriction ->
+                    Text(restriction, style = MaterialTheme.typography.bodyMedium, color = Milles.Violet)
+                }
+                val targetLink = track.licenseUrl ?: track.originalProviderUrl ?: track.shareUrl
+                if (!targetLink.isNullOrBlank()) {
+                    val actionText = when (track.providerId) {
+                        ProviderId.YOUTUBE -> "Watch on YouTube"
+                        ProviderId.AUDIUS -> "Open on Audius"
+                        ProviderId.JAMENDO -> if (track.licenseUrl != null) "Open Creative Commons License" else "Open on Jamendo"
+                        else -> "Open on ${track.providerId.displayName}"
+                    }
+                    Row(
+                        modifier = Modifier
+                            .clickable {
+                                runCatching { uriHandler.openUri(targetLink) }
+                            }
+                            .padding(top = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, tint = Milles.Violet, modifier = Modifier.size(16.dp))
+                        Text(
+                            actionText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Milles.Violet
+                        )
+                    }
                 }
             }
 
@@ -426,24 +564,32 @@ fun TrackOptionsSheet(
 
             Text("Add to Playlist", style = MaterialTheme.typography.labelSmall, color = palette.textSecondary)
 
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(playlists, key = { it.id }) { pl ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(palette.surfaceHigh)
-                            .clickable { onAddToPlaylist(pl.id) }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.PlaylistAdd, contentDescription = null, tint = Milles.Violet, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text(pl.title, style = MaterialTheme.typography.titleMedium, color = palette.textPrimary, modifier = Modifier.weight(1f))
-                        Text("${pl.displayedSongCount} songs", style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary)
+            if (playlists.isEmpty()) {
+                Text(
+                    "No playlists created yet. Create one in Library.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textSecondary
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(playlists, key = { it.id }) { pl ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(palette.surfaceHigh)
+                                .clickable { onAddToPlaylist(pl.id) }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = null, tint = Milles.Violet, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(pl.title, style = MaterialTheme.typography.titleMedium, color = palette.textPrimary, modifier = Modifier.weight(1f))
+                            Text("${pl.displayedSongCount} songs", style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary)
+                        }
                     }
                 }
             }

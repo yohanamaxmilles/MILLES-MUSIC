@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.model.ProviderId
 import com.example.ui.Track
 import com.example.ui.theme.LocalMillesPalette
 import com.example.ui.theme.Milles
@@ -64,6 +65,45 @@ import com.example.ui.theme.Milles
 /** Frosted-glass look (translucent fill + hairline stroke). */
 fun Modifier.glass(shape: Shape = RoundedCornerShape(24.dp)) =
     this.clip(shape).background(Color(0x24FFFFFF)).border(1.dp, Milles.Stroke, shape)
+
+@Composable
+fun ProviderBadgeChip(
+    providerId: ProviderId,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalMillesPalette.current
+    val accent = when (providerId) {
+        ProviderId.JAMENDO -> Milles.Lime
+        ProviderId.AUDIUS -> Milles.Violet
+        ProviderId.YOUTUBE -> Color(0xFFFF5A5F)
+        ProviderId.SOUNDCLOUD -> Color(0xFFFF8A3D)
+        ProviderId.SPOTIFY -> Color(0xFF1DB954)
+    }
+    val bg = if (palette.isDark) Color(0xCC111111) else Color(0xEBFFFFFF)
+    Row(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(bg)
+            .border(1.dp, accent.copy(alpha = 0.65f), CircleShape)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(accent)
+        )
+        Text(
+            text = providerId.displayName,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.textPrimary,
+            maxLines = 1
+        )
+    }
+}
 
 @Composable
 fun PlayButton(
@@ -116,15 +156,23 @@ fun CoverCard(track: Track, subtitle: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .testTag("cover_card_${track.id}")
     ) {
-        AsyncImage(
-            model = track.coverUrl,
-            contentDescription = track.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(144.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(palette.surfaceHigh)
-        )
+        Box(modifier = Modifier.size(144.dp)) {
+            AsyncImage(
+                model = track.coverUrl,
+                contentDescription = track.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(palette.surfaceHigh)
+            )
+            ProviderBadgeChip(
+                providerId = track.providerId,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
+        }
         Spacer(Modifier.height(8.dp))
         Text(track.title, style = MaterialTheme.typography.titleMedium, color = palette.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -166,7 +214,7 @@ fun TrackRow(
                 .background(palette.surfaceHigh)
         )
         Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 track.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -174,13 +222,19 @@ fun TrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                track.artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ProviderBadgeChip(providerId = track.providerId)
+                Text(
+                    if (track.isVideoEmbedOnly) "${track.artist} · Video" else track.artist,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         if (onMore != null) {
             IconButton(onClick = onMore) {

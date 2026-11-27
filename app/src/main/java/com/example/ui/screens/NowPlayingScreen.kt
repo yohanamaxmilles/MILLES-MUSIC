@@ -30,18 +30,20 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -101,9 +103,9 @@ interface PlayerActions {
  * Full-screen Now Playing layout:
  *  1. Header   : close | "PLAYING FROM" + source
  *  2. Cover    : full-screen, 6dp blur, behind everything
- *  3. Info     : title + artist  |  like + more
+ *  3. Info     : title + artist + album/attribution | like + more
  *  4. Scrubber : elapsed ... -remaining
- *  5. Transport: previous, PLAY, next
+ *  5. Transport: previous, PLAY (with buffering state), next
  *  6. Utilities: lyrics | audio quality | queue
  */
 @Composable
@@ -160,7 +162,7 @@ fun NowPlayingScreen(
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("PLAYING FROM", fontSize = 10.sp, letterSpacing = 1.5.sp, color = Color(0x99FFFFFF))
                     Text(
-                        state.source.ifBlank { "Your Library" },
+                        state.source.ifBlank { "Jamendo Stream" },
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
                         maxLines = 1,
@@ -171,6 +173,25 @@ fun NowPlayingScreen(
             }
 
             Spacer(Modifier.weight(1f))
+
+            if (state.playbackError != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xCC3B1818))
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = state.playbackError,
+                        color = Color(0xFFFFB4AB),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
 
             // 3. Info + quick actions
             Row(verticalAlignment = Alignment.Bottom) {
@@ -191,6 +212,20 @@ fun NowPlayingScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val metaLine = listOfNotNull(
+                        state.track.album.takeIf { it.isNotBlank() },
+                        state.track.attribution.takeIf { it.isNotBlank() }
+                    ).joinToString(" · ")
+                    if (metaLine.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            metaLine,
+                            fontSize = 12.sp,
+                            color = Color(0x99FFFFFF),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 Spacer(Modifier.width(12.dp))
                 GlassIconButton(
@@ -209,6 +244,9 @@ fun NowPlayingScreen(
             Scrubber(state.positionMs.toFloat() / dur) { actions.onSeek((it * dur).toLong()) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(formatTime(state.positionMs), style = MaterialTheme.typography.labelSmall, color = Color(0xB3FFFFFF))
+                if (state.isBuffering) {
+                    Text("Buffering…", style = MaterialTheme.typography.labelSmall, color = Milles.Lime)
+                }
                 Text("-" + formatTime(dur - state.positionMs), style = MaterialTheme.typography.labelSmall, color = Color(0xB3FFFFFF))
             }
 
@@ -223,7 +261,16 @@ fun NowPlayingScreen(
                 IconButton(actions::onPrevious, Modifier.size(56.dp)) {
                     Icon(Icons.Rounded.SkipPrevious, "Previous", Modifier.size(40.dp), tint = Color.White)
                 }
-                PlayButton(state.isPlaying, 76, actions::onPlayPause, Modifier.testTag("now_playing_play_pause"))
+                Box(contentAlignment = Alignment.Center) {
+                    PlayButton(state.isPlaying, 76, actions::onPlayPause, Modifier.testTag("now_playing_play_pause"))
+                    if (state.isBuffering) {
+                        CircularProgressIndicator(
+                            color = Color.Black,
+                            strokeWidth = 2.5.dp,
+                            modifier = Modifier.size(82.dp)
+                        )
+                    }
+                }
                 IconButton(actions::onNext, Modifier.size(56.dp)) {
                     Icon(Icons.Rounded.SkipNext, "Next", Modifier.size(40.dp), tint = Color.White)
                 }
@@ -250,7 +297,7 @@ fun NowPlayingScreen(
                     Spacer(Modifier.width(6.dp))
                     Text(state.quality, style = MaterialTheme.typography.labelSmall, fontSize = 12.sp, color = Color.White)
                 }
-                GlassIconButton(Icons.Rounded.QueueMusic, "Queue") { sheetTab = 0 }
+                GlassIconButton(Icons.AutoMirrored.Rounded.QueueMusic, "Queue") { sheetTab = 0 }
             }
             Spacer(Modifier.height(16.dp))
         }
@@ -332,7 +379,7 @@ private fun QueueSheet(
                 }
                 IconButton(actions::onRepeat) {
                     Icon(
-                        Icons.Rounded.Repeat,
+                        if (state.repeatOne) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
                         contentDescription = "Repeat",
                         tint = if (state.repeat) Milles.Lime else Milles.TextSecondary
                     )

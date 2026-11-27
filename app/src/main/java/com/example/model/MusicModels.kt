@@ -4,6 +4,14 @@ import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
+enum class ProviderId(val id: String, val displayName: String) {
+    JAMENDO("jamendo", "Jamendo"),
+    AUDIUS("audius", "Audius"),
+    YOUTUBE("youtube", "YouTube"),
+    SOUNDCLOUD("soundcloud", "SoundCloud"),
+    SPOTIFY("spotify", "Spotify")
+}
+
 enum class ThemeMode(val label: String) {
     DARK("Dark"),
     LIGHT("Light"),
@@ -42,10 +50,23 @@ data class Track(
     val artwork: ArtworkDescriptor,
     val coverUrl: String? = null,
     val streamUrl: String? = null,
-    val isExplicit: Boolean = false,
+    val artistId: String? = null,
+    val albumId: String? = null,
+    val releaseDate: String? = null,
+    val licenseUrl: String? = null,
+    val shareUrl: String? = null,
+    val attributionLabel: String = "Jamendo Streaming",
+    val isCommercialLicensed: Boolean = false,
     val isTrending: Boolean = false,
     val isNewRelease: Boolean = false,
-    val isUpbeat: Boolean = false
+    val isUpbeat: Boolean = false,
+    val providerId: ProviderId = ProviderId.JAMENDO,
+    val providerTrackId: String = id,
+    val originalProviderUrl: String? = shareUrl,
+    val licenseType: String = attributionLabel,
+    val territoryRestrictions: String? = null,
+    val streamingPermitted: Boolean = !streamUrl.isNullOrBlank(),
+    val isVideoEmbedOnly: Boolean = false
 )
 
 @Immutable
@@ -53,9 +74,14 @@ data class Artist(
     val id: String,
     val name: String,
     val genre: String,
-    val monthlyListeners: String,
+    val subtitle: String,
     val artwork: ArtworkDescriptor,
-    val bio: String
+    val imageUrl: String? = null,
+    val joinDate: String? = null,
+    val website: String? = null,
+    val shareUrl: String? = null,
+    val providerId: ProviderId = ProviderId.JAMENDO,
+    val originalProviderUrl: String? = shareUrl
 )
 
 @Immutable
@@ -63,10 +89,15 @@ data class Album(
     val id: String,
     val title: String,
     val artist: String,
-    val year: Int,
+    val artistId: String? = null,
+    val releaseDate: String? = null,
     val genre: String,
-    val trackIds: List<String>,
-    val artwork: ArtworkDescriptor
+    val trackIds: List<String> = emptyList(),
+    val artwork: ArtworkDescriptor,
+    val coverUrl: String? = null,
+    val shareUrl: String? = null,
+    val providerId: ProviderId = ProviderId.JAMENDO,
+    val originalProviderUrl: String? = shareUrl
 )
 
 @Immutable
@@ -77,7 +108,10 @@ data class Playlist(
     val trackIds: List<String>,
     val artwork: ArtworkDescriptor,
     val displayedSongCount: Int = trackIds.size,
-    val isUserCreated: Boolean = false
+    val isUserCreated: Boolean = false,
+    val providerId: ProviderId = ProviderId.JAMENDO,
+    val coverUrl: String? = null,
+    val originalProviderUrl: String? = null
 )
 
 @Immutable

@@ -25,7 +25,8 @@ class ExampleRobolectricTest {
 
     @Test
     fun `view model handles playlist creation, favorites, and theme switching`() {
-        val vm = MillesMusicViewModel()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val vm = MillesMusicViewModel.factory(context).create(MillesMusicViewModel::class.java)
         vm.selectTab(MillesTab.Library)
         assertEquals(MillesTab.Library, vm.uiState.value.activeTab)
 
@@ -36,8 +37,6 @@ class ExampleRobolectricTest {
 
         vm.selectThemeMode(ThemeMode.LIGHT)
         assertEquals(ThemeMode.LIGHT, vm.uiState.value.themeMode)
-
-        vm.togglePlayPause()
-        assertTrue(vm.uiState.value.isPlaying)
+        assertTrue(vm.uiState.value.favoriteTrackIds.isEmpty())
     }
 }

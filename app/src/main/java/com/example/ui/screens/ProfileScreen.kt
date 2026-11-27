@@ -58,6 +58,9 @@ import com.example.ui.theme.Milles
 @Composable
 fun ProfileScreen(
     themeMode: ThemeMode,
+    favoriteCount: Int,
+    playlistCount: Int,
+    recentlyPlayedCount: Int,
     onBack: () -> Unit,
     onOpenThemeSettings: () -> Unit,
     onOpenSheet: (ProfileSheetType) -> Unit,
@@ -163,7 +166,7 @@ fun ProfileScreen(
                         color = palette.textPrimary
                     )
                     Text(
-                        text = stringResource(R.string.music_journey_stats),
+                        text = "$favoriteCount liked · $playlistCount playlists · $recentlyPlayedCount played",
                         style = MaterialTheme.typography.bodyMedium,
                         color = palette.textSecondary
                     )

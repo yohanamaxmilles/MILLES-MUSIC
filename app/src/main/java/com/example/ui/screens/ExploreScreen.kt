@@ -1,19 +1,24 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +29,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -33,12 +39,16 @@ import com.example.ui.components.ScreenTitle
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.TrackRow
 import com.example.ui.theme.LocalMillesPalette
+import com.example.ui.theme.Milles
 
 @Composable
 fun ExploreScreen(
+    isLoading: Boolean,
+    errorMessage: String?,
     newReleases: List<Track>,
     topCharts: List<Track>,
-    activeTrackId: String,
+    activeTrackId: String?,
+    onRetry: () -> Unit,
     onTrack: (Track) -> Unit,
     onMoreTrack: (Track) -> Unit,
     bottomInset: Dp = 184.dp
@@ -53,54 +63,120 @@ fun ExploreScreen(
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item { ScreenTitle("Explore") }
-        item { SectionHeader("New Releases") }
-        item {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                items(newReleases, key = { it.id }) { t ->
+
+        if (isLoading && newReleases.isEmpty() && topCharts.isEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.stroke, RoundedCornerShape(22.dp))
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = Milles.Lime,
+                        strokeWidth = 2.5.dp,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        "Loading Jamendo releases and charts…",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = palette.textPrimary
+                    )
+                }
+            }
+        } else if (errorMessage != null && newReleases.isEmpty() && topCharts.isEmpty()) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.stroke, RoundedCornerShape(22.dp))
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "Unable to load Explore",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = palette.textPrimary
+                    )
+                    Text(
+                        errorMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = palette.textSecondary
+                    )
                     Box(
-                        Modifier
-                            .size(width = 260.dp, height = 320.dp)
-                            .clip(RoundedCornerShape(28.dp))
-                            .clickable { onTrack(t) }
-                            .testTag("explore_new_release_${t.id}")
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Milles.Lime)
+                            .clickable(onClick = onRetry)
+                            .padding(horizontal = 18.dp, vertical = 10.dp)
                     ) {
-                        AsyncImage(
-                            model = t.coverUrl,
-                            contentDescription = t.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().background(palette.surfaceHigh)
-                        )
+                        Text("Retry", fontWeight = FontWeight.SemiBold, color = Color.Black)
+                    }
+                }
+            }
+        }
+
+        if (newReleases.isNotEmpty()) {
+            item { SectionHeader("New Releases") }
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(newReleases, key = { it.id }) { t ->
                         Box(
                             Modifier
-                                .fillMaxSize()
-                                .background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0xE6000000)))
-                        )
-                        Column(Modifier.align(Alignment.BottomStart).padding(18.dp)) {
-                            Text(
-                                t.title,
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                .size(width = 260.dp, height = 320.dp)
+                                .clip(RoundedCornerShape(28.dp))
+                                .clickable { onTrack(t) }
+                                .testTag("explore_new_release_${t.id}")
+                        ) {
+                            AsyncImage(
+                                model = t.coverUrl,
+                                contentDescription = t.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().background(palette.surfaceHigh)
                             )
-                            Text(t.artist, color = Color(0xCCFFFFFF), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0xE6000000)))
+                            )
+                            Column(Modifier.align(Alignment.BottomStart).padding(18.dp)) {
+                                Text(
+                                    t.title,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(t.artist, color = Color(0xCCFFFFFF), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 }
             }
         }
-        item { SectionHeader("Top Charts") }
-        itemsIndexed(topCharts, key = { _, t -> t.id }) { i, t ->
-            TrackRow(
-                track = t,
-                active = t.id == activeTrackId,
-                rank = i + 1,
-                onMore = { onMoreTrack(t) },
-                onClick = { onTrack(t) }
-            )
+
+        if (topCharts.isNotEmpty()) {
+            item { SectionHeader("Popular on Jamendo") }
+            itemsIndexed(topCharts, key = { _, t -> t.id }) { i, t ->
+                TrackRow(
+                    track = t,
+                    active = t.id == activeTrackId,
+                    rank = i + 1,
+                    onMore = { onMoreTrack(t) },
+                    onClick = { onTrack(t) }
+                )
+            }
         }
     }
 }
