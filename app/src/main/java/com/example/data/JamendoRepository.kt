@@ -7,6 +7,8 @@ import com.example.model.Album
 import com.example.model.Artist
 import com.example.model.ArtworkDescriptor
 import com.example.model.Track
+import com.example.model.TrackSource
+import com.example.model.TrendMetrics
 import com.example.network.JamendoAlbumDto
 import com.example.network.JamendoApiFactory
 import com.example.network.JamendoApiService
@@ -14,35 +16,97 @@ import com.example.network.JamendoArtistDto
 import com.example.network.JamendoHeadersDto
 import com.example.network.JamendoTrackDto
 import java.io.IOException
+import java.util.logging.Level
+import java.util.logging.Logger
 import kotlin.coroutines.cancellation.CancellationException
 import retrofit2.HttpException
 
 class JamendoRepository(
     private val apiService: JamendoApiService = JamendoApiFactory.create(),
-    private val clientId: String = BuildConfig.JAMENDO_CLIENT_ID
+    clientId: String = BuildConfig.JAMENDO_CLIENT_ID
 ) {
-    val isConfigured: Boolean
-        get() = clientId.isNotBlank() && clientId != PLACEHOLDER_CLIENT_ID
+    private val logger = Logger.getLogger("JamendoRepository")
+    private val normalizedClientId: String = normalizeCredential(clientId)
 
-    suspend fun fetchPopularTracks(limit: Int = 20): Result<List<Track>> =
+    val isConfigured: Boolean
+        get() = normalizedClientId.isNotBlank() &&
+            normalizedClientId != PLACEHOLDER_CLIENT_ID &&
+            !normalizedClientId.equals("null", ignoreCase = true)
+
+    suspend fun fetchTrendingCharts(limit: Int = 20, offset: Int = 0): Result<List<Track>> =
+        executeQuery {
+            val buzzTracks = try {
+                val buzzResponse = apiService.getTracks(
+                    clientId = normalizedClientId,
+                    limit = limit,
+                    offset = offset.takeIf { it > 0 },
+                    order = "buzzrate"
+                )
+                validateHeaders(buzzResponse.headers)
+                buzzResponse.results.mapIndexedNotNull { index, dto ->
+                    dto.toDomainTrack(
+                        index = index,
+                        isTrending = true,
+                        chartRank = offset + index + 1,
+                        chartLabel = "Jamendo Buzz"
+                    )
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (_: Throwable) {
+                emptyList()
+            }
+
+            if (buzzTracks.isNotEmpty() || offset > 0) {
+                buzzTracks
+            } else {
+                val weekResponse = apiService.getTracks(
+                    clientId = normalizedClientId,
+                    limit = limit,
+                    order = "popularity_week"
+                )
+                validateHeaders(weekResponse.headers)
+                weekResponse.results.mapIndexedNotNull { index, dto ->
+                    dto.toDomainTrack(
+                        index = index,
+                        isTrending = true,
+                        chartRank = index + 1,
+                        chartLabel = "Jamendo Weekly Chart"
+                    )
+                }
+            }
+        }
+
+    suspend fun fetchPopularTracks(limit: Int = 20, offset: Int = 0): Result<List<Track>> =
         executeQuery {
             val response = apiService.getTracks(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
+                offset = offset.takeIf { it > 0 },
                 order = "popularity_week"
             )
             validateHeaders(response.headers)
             response.results.mapIndexedNotNull { index, dto ->
-                dto.toDomainTrack(index = index, isTrending = true)
+                dto.toDomainTrack(
+                    index = index,
+                    isTrending = true,
+                    chartRank = offset + index + 1,
+                    chartLabel = "Jamendo Weekly Chart"
+                )
             }
         }
 
-    suspend fun fetchRecommendedTracks(genreTag: String? = null, limit: Int = 15): Result<List<Track>> =
+    suspend fun fetchRecommendedTracks(
+        genreTag: String? = null,
+        limit: Int = 15,
+        offset: Int = 0
+    ): Result<List<Track>> =
         executeQuery {
             val cleanTag = genreTag?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
             val response = apiService.getTracks(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
+                offset = offset.takeIf { it > 0 },
                 order = "popularity_month",
                 tags = cleanTag,
                 featured = if (cleanTag == null) 1 else null
@@ -53,11 +117,12 @@ class JamendoRepository(
             }
         }
 
-    suspend fun fetchNewReleases(limit: Int = 16): Result<List<Track>> =
+    suspend fun fetchNewReleases(limit: Int = 16, offset: Int = 0): Result<List<Track>> =
         executeQuery {
             val response = apiService.getTracks(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
+                offset = offset.takeIf { it > 0 },
                 order = "releasedate_desc"
             )
             validateHeaders(response.headers)
@@ -66,13 +131,14 @@ class JamendoRepository(
             }
         }
 
-    suspend fun searchTracks(query: String, limit: Int = 25): Result<List<Track>> {
+    suspend fun searchTracks(query: String, limit: Int = 25, offset: Int = 0): Result<List<Track>> {
         val cleanQuery = query.trim()
         if (cleanQuery.isEmpty()) return Result.success(emptyList())
         return executeQuery {
             val response = apiService.getTracks(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
+                offset = offset.takeIf { it > 0 },
                 search = cleanQuery
             )
             validateHeaders(response.headers)
@@ -82,12 +148,13 @@ class JamendoRepository(
         }
     }
 
-    suspend fun fetchTracksByGenre(genreTag: String, limit: Int = 20): Result<List<Track>> {
+    suspend fun fetchTracksByGenre(genreTag: String, limit: Int = 20, offset: Int = 0): Result<List<Track>> {
         val normalizedTag = genreTag.trim().lowercase().replace("&", "").replace(" ", "")
         return executeQuery {
             val response = apiService.getTracks(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
+                offset = offset.takeIf { it > 0 },
                 order = "popularity_week",
                 tags = normalizedTag
             )
@@ -102,7 +169,7 @@ class JamendoRepository(
         executeQuery {
             val rawId = artistId.removePrefix("jam_art_")
             val response = apiService.getTracks(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
                 order = "popularity_total",
                 artistId = rawId
@@ -117,7 +184,7 @@ class JamendoRepository(
         executeQuery {
             val rawId = albumId.removePrefix("jam_alb_")
             val response = apiService.getTracks(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
                 albumId = rawId
             )
@@ -127,11 +194,16 @@ class JamendoRepository(
             }
         }
 
-    suspend fun fetchArtists(limit: Int = 20, nameSearch: String? = null): Result<List<Artist>> =
+    suspend fun fetchArtists(
+        limit: Int = 20,
+        offset: Int = 0,
+        nameSearch: String? = null
+    ): Result<List<Artist>> =
         executeQuery {
             val response = apiService.getArtists(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
+                offset = offset.takeIf { it > 0 },
                 order = if (nameSearch.isNullOrBlank()) "popularity_week" else null,
                 nameSearch = nameSearch?.trim()?.takeIf { it.isNotEmpty() }
             )
@@ -143,13 +215,15 @@ class JamendoRepository(
 
     suspend fun fetchAlbums(
         limit: Int = 20,
+        offset: Int = 0,
         order: String = "popularity_week",
         nameSearch: String? = null
     ): Result<List<Album>> =
         executeQuery {
             val response = apiService.getAlbums(
-                clientId = clientId,
+                clientId = normalizedClientId,
                 limit = limit,
+                offset = offset.takeIf { it > 0 },
                 order = if (nameSearch.isNullOrBlank()) order else null,
                 nameSearch = nameSearch?.trim()?.takeIf { it.isNotEmpty() }
             )
@@ -161,7 +235,11 @@ class JamendoRepository(
 
     private fun validateHeaders(headers: JamendoHeadersDto?) {
         if (headers != null && headers.status.equals("failed", ignoreCase = true)) {
-            throw IllegalStateException("Jamendo catalog returned error code ${headers.code ?: -1}.")
+            val code = headers.code ?: -1
+            if (code == 5) {
+                throw IllegalStateException("Jamendo rejected the configured Client ID (error code 5).")
+            }
+            throw IllegalStateException("Jamendo catalog returned error code $code.")
         }
     }
 
@@ -174,13 +252,20 @@ class JamendoRepository(
         } catch (ce: CancellationException) {
             throw ce
         } catch (http: HttpException) {
+            logger.log(Level.WARNING, "Jamendo HTTP error: ${http.code()}")
             Result.failure(IllegalStateException("Jamendo catalog unavailable (HTTP ${http.code()})."))
-        } catch (_: IOException) {
+        } catch (io: IOException) {
+            logger.log(Level.WARNING, "Jamendo network error: ${io.javaClass.simpleName}")
             Result.failure(IllegalStateException("Unable to reach Jamendo. Check network connection."))
         } catch (ise: IllegalStateException) {
-            Result.failure(ise)
-        } catch (_: Throwable) {
+            val safeMsg = ise.message
+                ?.takeIf { normalizedClientId.isBlank() || !it.contains(normalizedClientId) }
+                ?: "Unable to load data from Jamendo."
+            logger.log(Level.WARNING, "Jamendo state error: $safeMsg")
+            Result.failure(IllegalStateException(safeMsg))
+        } catch (err: Throwable) {
             // Never propagate raw exception details or request URLs containing client_id.
+            logger.log(Level.WARNING, "Jamendo unexpected error: ${err.javaClass.simpleName}")
             Result.failure(IllegalStateException("Unable to load data from Jamendo."))
         }
     }
@@ -188,7 +273,9 @@ class JamendoRepository(
     private fun JamendoTrackDto.toDomainTrack(
         index: Int,
         isTrending: Boolean = false,
-        isNewRelease: Boolean = false
+        isNewRelease: Boolean = false,
+        chartRank: Int? = null,
+        chartLabel: String? = null
     ): Track? {
         val stream = audio?.takeIf { it.isNotBlank() } ?: return null
         val primaryGenre = musicinfo?.tags?.genres
@@ -207,14 +294,54 @@ class JamendoRepository(
             ?: image?.takeIf { it.isNotBlank() }
 
         val licenseInfo = parseLicenseAttribution(licenseCcUrl)
+        val cleanIsrc = isrc?.trim()?.takeIf { it.isNotBlank() }
+        val cleanAlbum = albumName.ifBlank { "Single" }
+        val cleanShareUrl = shareUrl?.takeIf { it.isNotBlank() }
+        val cleanLicenseUrl = licenseCcUrl?.takeIf { it.isNotBlank() }
+        val cleanDuration = duration.coerceAtLeast(1)
+
+        val hasRealStats = stats != null && (
+            stats.rateListenedTotal != null ||
+                stats.rateDownloadsTotal != null ||
+                stats.favorited != null ||
+                stats.playlisted != null
+            )
+        val metrics = if (isTrending || chartRank != null || hasRealStats) {
+            TrendMetrics(
+                providerRank = chartRank,
+                listensOrPlays = stats?.rateListenedTotal,
+                downloads = stats?.rateDownloadsTotal,
+                favorites = stats?.favorited ?: stats?.likes,
+                reposts = null,
+                playlistAdds = stats?.playlisted,
+                sourceChartLabel = chartLabel
+            )
+        } else null
+
+        val source = TrackSource(
+            providerId = com.example.model.ProviderId.JAMENDO,
+            providerTrackId = id,
+            streamUrl = stream,
+            originalProviderUrl = cleanShareUrl,
+            licenseType = licenseInfo.label,
+            attributionInfo = licenseInfo.label,
+            licenseUrl = cleanLicenseUrl,
+            commercialUsePermitted = licenseInfo.isCommercialAllowed,
+            streamingPermitted = true,
+            territoryRestrictions = null,
+            isVideoEmbedOnly = false,
+            isrc = cleanIsrc,
+            durationSeconds = cleanDuration,
+            album = cleanAlbum
+        )
 
         return Track(
             id = "jam_$id",
             title = name.ifBlank { "Untitled Track" },
             artist = artistName.ifBlank { "Independent Artist" },
-            album = albumName.ifBlank { "Single" },
+            album = cleanAlbum,
             genre = primaryGenre,
-            durationSeconds = duration.coerceAtLeast(1),
+            durationSeconds = cleanDuration,
             artwork = ArtworkDescriptor(
                 imageRes = fallbackArtRes,
                 primaryColor = Color(0xFF242B1E),
@@ -226,13 +353,22 @@ class JamendoRepository(
             artistId = artistId?.takeIf { it.isNotBlank() }?.let { "jam_art_$it" },
             albumId = albumId?.takeIf { it.isNotBlank() }?.let { "jam_alb_$it" },
             releaseDate = releaseDate?.takeIf { it.isNotBlank() },
-            licenseUrl = licenseCcUrl?.takeIf { it.isNotBlank() },
-            shareUrl = shareUrl?.takeIf { it.isNotBlank() },
+            licenseUrl = cleanLicenseUrl,
+            shareUrl = cleanShareUrl,
             attributionLabel = licenseInfo.label,
             isCommercialLicensed = licenseInfo.isCommercialAllowed,
             isTrending = isTrending,
             isNewRelease = isNewRelease,
-            isUpbeat = index % 2 == 0
+            isUpbeat = index % 2 == 0,
+            providerId = com.example.model.ProviderId.JAMENDO,
+            providerTrackId = id,
+            originalProviderUrl = cleanShareUrl,
+            licenseType = licenseInfo.label,
+            streamingPermitted = true,
+            isVideoEmbedOnly = false,
+            isrc = cleanIsrc,
+            sources = listOf(source),
+            trendMetrics = metrics
         )
     }
 
@@ -312,5 +448,17 @@ class JamendoRepository(
 
     companion object {
         const val PLACEHOLDER_CLIENT_ID = "MY_JAMENDO_CLIENT_ID"
+
+        fun normalizeCredential(raw: String?): String {
+            val trimmed = raw?.trim().orEmpty()
+            return if (trimmed.length >= 2 &&
+                ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+                    (trimmed.startsWith("'") && trimmed.endsWith("'")))
+            ) {
+                trimmed.substring(1, trimmed.length - 1).trim()
+            } else {
+                trimmed
+            }
+        }
     }
 }

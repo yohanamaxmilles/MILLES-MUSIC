@@ -26,7 +26,9 @@ import com.example.network.JamendoAlbumsResponse
 import com.example.network.JamendoApiService
 import com.example.network.JamendoArtistDto
 import com.example.network.JamendoArtistsResponse
+import com.example.network.JamendoTagsDto
 import com.example.network.JamendoTrackDto
+import com.example.network.JamendoTrackStatsDto
 import com.example.network.JamendoTracksResponse
 import com.example.network.YouTubeApiService
 import com.example.network.YouTubeContentDetailsDto
@@ -42,15 +44,21 @@ import com.example.network.YouTubeVideoStatusDto
 import com.example.network.YouTubeVideosResponse
 import com.example.playback.PlaybackEngine
 import com.example.playback.PlaybackEngineEvent
+import com.example.playback.PlaybackResolution
+import com.example.playback.PlaybackRouter
 import com.example.provider.AudiusMusicProvider
 import com.example.provider.JamendoMusicProvider
 import com.example.provider.SoundCloudMusicProvider
 import com.example.provider.SpotifyMetadataProvider
+import com.example.provider.TrackDeduplicator
+import com.example.provider.TrendingRankingEngine
 import com.example.provider.UnifiedMusicCatalogService
+import com.example.provider.UnifiedTrack
 import com.example.provider.YouTubeMusicProvider
 import com.example.provider.toDomainTrack
 import com.example.state.MillesMusicViewModel
 import com.example.state.formatDuration
+import com.example.state.formatTrendMetricsLabel
 import com.example.state.toPlayerUiState
 import com.example.state.toUiTrack
 import com.example.ui.components.MillesTab
@@ -150,8 +158,15 @@ class ExampleUnitTest {
             assertFalse(loadedTrack.isCommercialLicensed)
             assertEquals("https://cdn.example.com/cover.jpg", loadedTrack.toUiTrack().coverUrl)
 
-            assertEquals(1, vm.uiState.value.audiusTrendingTracks.size)
-            assertEquals(ProviderId.AUDIUS, vm.uiState.value.audiusTrendingTracks.first().providerId)
+            // Both Trending Now and Popular Tracks must contain Jamendo and Audius tracks with accurate provider badges
+            assertTrue(vm.uiState.value.trendingNowTracks.any { it.providerId == ProviderId.JAMENDO && it.toUiTrack().providerId == ProviderId.JAMENDO })
+            assertTrue(vm.uiState.value.trendingNowTracks.any { it.providerId == ProviderId.AUDIUS && it.toUiTrack().providerId == ProviderId.AUDIUS })
+            assertTrue(vm.uiState.value.popularTracks.any { it.providerId == ProviderId.JAMENDO && it.toUiTrack().providerId == ProviderId.JAMENDO })
+            assertTrue(vm.uiState.value.popularTracks.any { it.providerId == ProviderId.AUDIUS && it.toUiTrack().providerId == ProviderId.AUDIUS })
+            assertTrue(vm.uiState.value.recommendedTracks.any { it.providerId == ProviderId.JAMENDO })
+            assertTrue(vm.uiState.value.recommendedTracks.any { it.providerId == ProviderId.AUDIUS })
+            assertTrue(vm.uiState.value.newReleases.any { it.providerId == ProviderId.JAMENDO })
+            assertTrue(vm.uiState.value.newReleases.any { it.providerId == ProviderId.AUDIUS })
 
             vm.playTrack(loadedTrack, openPlayer = true)
             testScheduler.runCurrent()
@@ -266,6 +281,58 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun `credential validation rejects placeholders, blanks, and null strings while trimming quotes`() {
+        assertFalse(JamendoRepository(apiService = FakeJamendoApiService(), clientId = "").isConfigured)
+        assertFalse(JamendoRepository(apiService = FakeJamendoApiService(), clientId = "   ").isConfigured)
+        assertFalse(JamendoRepository(apiService = FakeJamendoApiService(), clientId = "null").isConfigured)
+        assertFalse(JamendoRepository(apiService = FakeJamendoApiService(), clientId = JamendoRepository.PLACEHOLDER_CLIENT_ID).isConfigured)
+        assertFalse(JamendoRepository(apiService = FakeJamendoApiService(), clientId = "\"MY_JAMENDO_CLIENT_ID\"").isConfigured)
+        assertTrue(JamendoRepository(apiService = FakeJamendoApiService(), clientId = "  \"demo_client_123\" ").isConfigured)
+
+        assertFalse(com.example.network.YouTubeApiFactory.isConfigured(""))
+        assertFalse(com.example.network.YouTubeApiFactory.isConfigured("  "))
+        assertFalse(com.example.network.YouTubeApiFactory.isConfigured("null"))
+        assertFalse(com.example.network.YouTubeApiFactory.isConfigured(com.example.network.YouTubeApiFactory.PLACEHOLDER_API_KEY))
+        assertFalse(YouTubeMusicProvider(apiService = FakeYouTubeApiService(), apiKey = "\"MY_YOUTUBE_API_KEY\"").isEnabled)
+        assertTrue(YouTubeMusicProvider(apiService = FakeYouTubeApiService(), apiKey = " \"demo_yt_key_456\" ").isEnabled)
+    }
+
+    @Test
+    fun `jamendo and youtube error paths never expose configured credentials`() = runBlocking {
+        val secretJamId = "super_secret_jam_id_999"
+        val failingJamRepo = JamendoRepository(
+            apiService = FailingJamendoApiService(),
+            clientId = secretJamId
+        )
+        val jamErr = failingJamRepo.fetchPopularTracks().exceptionOrNull()?.message.orEmpty()
+        assertFalse(jamErr.contains(secretJamId))
+
+        val secretYtKey = "super_secret_yt_key_888"
+        val failingYtProvider = YouTubeMusicProvider(
+            apiService = object : YouTubeApiService {
+                override suspend fun searchMusicVideos(
+                    part: String,
+                    type: String,
+                    videoCategoryId: String,
+                    videoEmbeddable: String,
+                    maxResults: Int,
+                    query: String,
+                    apiKey: String
+                ): YouTubeSearchResponse = throw IllegalStateException("Request failed for key=$secretYtKey")
+
+                override suspend fun getVideoDetails(
+                    part: String,
+                    videoIds: String,
+                    apiKey: String
+                ): YouTubeVideosResponse = throw IllegalStateException("Request failed for key=$secretYtKey")
+            },
+            apiKey = secretYtKey
+        )
+        val ytErr = failingYtProvider.searchTracks("test").exceptionOrNull()?.message.orEmpty()
+        assertFalse(ytErr.contains(secretYtKey))
+    }
+
+    @Test
     fun `audius provider rejects stream-gated tracks from authorized streaming`() = runBlocking {
         val audius = AudiusMusicProvider(apiService = FakeAudiusApiService(streamGated = true))
         val tracks = audius.fetchTrendingTracks(limit = 5).getOrThrow()
@@ -273,6 +340,316 @@ class ExampleUnitTest {
         assertFalse(tracks.first().streamingPermitted)
         assertNull(tracks.first().streamUrl)
         assertTrue(audius.getAuthorizedStreamUrl("aud_a1").isFailure)
+    }
+
+    @Test
+    fun `unified home catalog combines jamendo and audius and isolates single provider failures`() = runBlocking {
+        val workingJamendoRepo = JamendoRepository(apiService = FakeJamendoApiService(), clientId = "sample_proto_id")
+        val workingAudius = AudiusMusicProvider(apiService = FakeAudiusApiService())
+        val disabledYt = YouTubeMusicProvider(apiService = FakeYouTubeApiService(), apiKey = YouTubeMusicProvider.PLACEHOLDER_API_KEY)
+
+        val bothWorking = UnifiedMusicCatalogService(
+            jamendoRepository = workingJamendoRepo,
+            jamendoProvider = JamendoMusicProvider(workingJamendoRepo),
+            audiusProvider = workingAudius,
+            youTubeProvider = disabledYt
+        ).loadHomeCatalog()
+
+        assertTrue(bothWorking.trendingNow.any { it.providerId == ProviderId.JAMENDO })
+        assertTrue(bothWorking.trendingNow.any { it.providerId == ProviderId.AUDIUS })
+        assertTrue(bothWorking.popularTracks.any { it.providerId == ProviderId.JAMENDO })
+        assertTrue(bothWorking.popularTracks.any { it.providerId == ProviderId.AUDIUS })
+        assertTrue(bothWorking.providerFailures.isEmpty())
+
+        // If Jamendo fails, Audius must still populate catalog
+        val failingJamendoRepo = JamendoRepository(apiService = FailingJamendoApiService(), clientId = "sample_proto_id")
+        val jamendoFailedCatalog = UnifiedMusicCatalogService(
+            jamendoRepository = failingJamendoRepo,
+            jamendoProvider = JamendoMusicProvider(failingJamendoRepo),
+            audiusProvider = workingAudius,
+            youTubeProvider = disabledYt
+        ).loadHomeCatalog()
+
+        assertTrue(jamendoFailedCatalog.trendingNow.any { it.providerId == ProviderId.AUDIUS })
+        assertTrue(jamendoFailedCatalog.popularTracks.any { it.providerId == ProviderId.AUDIUS })
+        assertTrue(jamendoFailedCatalog.providerFailures.any { it.providerId == ProviderId.JAMENDO })
+
+        // If Audius fails, Jamendo must still populate catalog
+        val audiusFailedCatalog = UnifiedMusicCatalogService(
+            jamendoRepository = workingJamendoRepo,
+            jamendoProvider = JamendoMusicProvider(workingJamendoRepo),
+            audiusProvider = AudiusMusicProvider(apiService = FailingAudiusApiService()),
+            youTubeProvider = disabledYt
+        ).loadHomeCatalog()
+
+        assertTrue(audiusFailedCatalog.trendingNow.any { it.providerId == ProviderId.JAMENDO })
+        assertTrue(audiusFailedCatalog.popularTracks.any { it.providerId == ProviderId.JAMENDO })
+        assertTrue(audiusFailedCatalog.providerFailures.any { it.providerId == ProviderId.AUDIUS })
+    }
+
+    @Test
+    fun `unconfigured jamendo surfaces notice while audius continues populating home catalog`() = runTest(testDispatcher) {
+        val unconfiguredJamendoRepo = JamendoRepository(
+            apiService = FakeJamendoApiService(),
+            clientId = JamendoRepository.PLACEHOLDER_CLIENT_ID
+        )
+        val workingAudius = AudiusMusicProvider(apiService = FakeAudiusApiService())
+        val disabledYt = YouTubeMusicProvider(apiService = FakeYouTubeApiService(), apiKey = YouTubeMusicProvider.PLACEHOLDER_API_KEY)
+        val unconfiguredVmStore = ViewModelStore()
+        val unconfiguredVm = ViewModelProvider(
+            unconfiguredVmStore,
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = MillesMusicViewModel(
+                    jamendoRepository = unconfiguredJamendoRepo,
+                    playbackEngine = FakePlaybackEngine(),
+                    autoLoadCatalog = true,
+                    audiusProvider = workingAudius,
+                    youTubeProvider = disabledYt
+                ) as T
+            }
+        )[MillesMusicViewModel::class.java]
+        try {
+            testScheduler.advanceTimeBy(100)
+            testScheduler.runCurrent()
+            assertTrue(unconfiguredVm.uiState.value.trendingNowTracks.any { it.providerId == ProviderId.AUDIUS })
+            assertTrue(unconfiguredVm.uiState.value.catalogProviderNotices.any { it.providerId == ProviderId.JAMENDO && it.isUnconfigured })
+        } finally {
+            unconfiguredVmStore.clear()
+        }
+    }
+
+    @Test
+    fun `cross provider deduplicator merges matching recordings and prevents false merges on remixes or live versions`() {
+        val jamOriginal = UnifiedTrack(
+            trackId = "jam_101",
+            providerId = ProviderId.JAMENDO,
+            providerTrackId = "101",
+            title = "Neon Horizon",
+            artist = "Milles Artist",
+            album = "Horizon LP",
+            durationSeconds = 210,
+            genre = "Electronic",
+            releaseDate = "2026-02-01",
+            artworkUrl = "https://cdn.example.com/jam.jpg",
+            streamUrl = "https://cdn.example.com/jam.mp3",
+            originalProviderUrl = "https://jamendo.com/track/101",
+            licenseType = "CC BY",
+            attributionInfo = "CC BY",
+            licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+            commercialUsePermitted = true,
+            streamingPermitted = true,
+            isrc = "USABC2600001"
+        )
+        val audOriginalSameIsrc = UnifiedTrack(
+            trackId = "aud_202",
+            providerId = ProviderId.AUDIUS,
+            providerTrackId = "aud_202",
+            title = "Neon Horizon (feat. Guest)",
+            artist = "Milles Artist",
+            album = "Audius Single",
+            durationSeconds = 211,
+            genre = "Electronic",
+            releaseDate = "2026-02-01",
+            artworkUrl = "https://cdn.example.com/aud.jpg",
+            streamUrl = "https://cdn.example.com/aud.mp3",
+            originalProviderUrl = "https://audius.co/milles/neon-horizon",
+            licenseType = "Audius Public Streaming",
+            attributionInfo = "Audius",
+            commercialUsePermitted = false,
+            streamingPermitted = true,
+            isrc = "us-abc-26-00001"
+        )
+        val audRemix = audOriginalSameIsrc.copy(
+            trackId = "aud_203",
+            providerTrackId = "aud_203",
+            title = "Neon Horizon (Club Remix)",
+            isrc = null
+        )
+        val audLive = audOriginalSameIsrc.copy(
+            trackId = "aud_204",
+            providerTrackId = "aud_204",
+            title = "Neon Horizon - Live Session",
+            isrc = null
+        )
+        val audCover = audOriginalSameIsrc.copy(
+            trackId = "aud_205",
+            providerTrackId = "aud_205",
+            title = "Neon Horizon (Acoustic Cover)",
+            isrc = null
+        )
+
+        // Also test metadata-only match (no ISRC on either side)
+        val jamMetaOnly = jamOriginal.copy(trackId = "jam_109", providerTrackId = "109", title = "Dawn Pulse", isrc = null, album = "Dawn EP")
+        val audMetaOnly = audOriginalSameIsrc.copy(
+            trackId = "aud_209",
+            providerTrackId = "aud_209",
+            title = "Dawn Pulse",
+            isrc = null,
+            album = "Audius Single"
+        )
+
+        val deduped = TrackDeduplicator.deduplicate(
+            listOf(jamOriginal, audOriginalSameIsrc, audRemix, audLive, audCover, jamMetaOnly, audMetaOnly)
+        )
+
+        assertEquals(5, deduped.size)
+        val mergedHorizon = deduped.first { it.title.startsWith("Neon Horizon") && !it.title.contains("Remix") }
+        assertEquals(ProviderId.JAMENDO, mergedHorizon.providerId)
+        assertEquals(2, mergedHorizon.resolvedSources().size)
+        assertTrue(mergedHorizon.resolvedSources().any { it.providerId == ProviderId.JAMENDO })
+        assertTrue(mergedHorizon.resolvedSources().any { it.providerId == ProviderId.AUDIUS })
+
+        val mergedDawn = deduped.first { it.title == "Dawn Pulse" }
+        assertEquals(2, mergedDawn.resolvedSources().size)
+        assertTrue(deduped.any { it.providerTrackId == "aud_203" })
+        assertTrue(deduped.any { it.providerTrackId == "aud_204" })
+        assertTrue(deduped.any { it.providerTrackId == "aud_205" })
+    }
+
+    @Test
+    fun `trends now ranking uses genuine provider metrics and never fabricates missing stats`() {
+        val jamLow = UnifiedTrack(
+            trackId = "jam_low",
+            providerId = ProviderId.JAMENDO,
+            providerTrackId = "j_low",
+            title = "Quiet Breeze",
+            artist = "Artist A",
+            album = "LP",
+            durationSeconds = 180,
+            genre = "Ambient",
+            releaseDate = "2020-01-01",
+            streamUrl = "https://cdn.example.com/j1.mp3",
+            licenseType = "CC BY",
+            attributionInfo = "CC BY",
+            streamingPermitted = true,
+            trendMetrics = com.example.model.TrendMetrics(
+                providerRank = 10,
+                listensOrPlays = 50,
+                sourceChartLabel = "Jamendo Charts"
+            )
+        )
+        val audHigh = UnifiedTrack(
+            trackId = "aud_high",
+            providerId = ProviderId.AUDIUS,
+            providerTrackId = "a_high",
+            title = "Peak Surge",
+            artist = "Artist B",
+            album = "Single",
+            durationSeconds = 200,
+            genre = "Electronic",
+            releaseDate = "2026-11-24",
+            streamUrl = "https://cdn.example.com/a1.mp3",
+            licenseType = "Audius",
+            attributionInfo = "Audius",
+            streamingPermitted = true,
+            trendMetrics = com.example.model.TrendMetrics(
+                providerRank = 1,
+                listensOrPlays = 250_000,
+                favorites = 12_000,
+                reposts = 3_400,
+                sourceChartLabel = "Audius Trending"
+            )
+        )
+        val noStatsTrack = jamLow.copy(
+            trackId = "jam_nostats",
+            providerTrackId = "j_nostats",
+            title = "Unmeasured Track",
+            trendMetrics = com.example.model.TrendMetrics(providerRank = 5)
+        )
+
+        val ranked = TrendingRankingEngine.rankUnifiedTrending(
+            providerBatches = mapOf(
+                ProviderId.JAMENDO to listOf(jamLow, noStatsTrack),
+                ProviderId.AUDIUS to listOf(audHigh)
+            ),
+            nowMillis = 1795651200000L // 2026-11-26 UTC approx
+        )
+
+        assertEquals("a_high", ranked.first().providerTrackId)
+        assertNull(noStatsTrack.trendMetrics?.listensOrPlays)
+        assertEquals("#5", formatTrendMetricsLabel(noStatsTrack.trendMetrics))
+        assertTrue(formatTrendMetricsLabel(audHigh.trendMetrics)?.contains("250.0K plays") == true)
+    }
+
+    @Test
+    fun `playback router and view model automatically fail over to compatible backup source on error`() = runTest(testDispatcher) {
+        val fakePlayer = FakePlaybackEngine()
+        val repo = JamendoRepository(apiService = FakeJamendoApiService(), clientId = "sample_proto_id")
+        val audiusProvider = AudiusMusicProvider(apiService = FakeAudiusApiService())
+        val youTubeProvider = YouTubeMusicProvider(apiService = FakeYouTubeApiService(), apiKey = "sample_youtube_key")
+        val store = ViewModelStore()
+        val vm = ViewModelProvider(
+            store,
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = MillesMusicViewModel(
+                    jamendoRepository = repo,
+                    playbackEngine = fakePlayer,
+                    autoLoadCatalog = false,
+                    audiusProvider = audiusProvider,
+                    youTubeProvider = youTubeProvider
+                ) as T
+            }
+        )[MillesMusicViewModel::class.java]
+
+        try {
+            val jamSource = com.example.model.TrackSource(
+                providerId = ProviderId.JAMENDO,
+                providerTrackId = "101",
+                streamUrl = "https://cdn.example.com/primary_broken.mp3",
+                originalProviderUrl = "https://jamendo.com/track/101",
+                licenseType = "CC BY",
+                attributionInfo = "CC BY",
+                commercialUsePermitted = true,
+                streamingPermitted = true
+            )
+            val audSource = com.example.model.TrackSource(
+                providerId = ProviderId.AUDIUS,
+                providerTrackId = "aud_202",
+                streamUrl = "https://cdn.example.com/backup_audius.mp3",
+                originalProviderUrl = "https://audius.co/track/202",
+                licenseType = "Audius",
+                attributionInfo = "Audius",
+                commercialUsePermitted = false,
+                streamingPermitted = true
+            )
+            val multiSourceTrack = Track(
+                id = "jam_101",
+                title = "Failover Anthem",
+                artist = "Milles Artist",
+                album = "Dual LP",
+                durationSeconds = 200,
+                genre = "Electronic",
+                artwork = com.example.model.ArtworkDescriptor(),
+                streamUrl = jamSource.streamUrl,
+                providerId = ProviderId.JAMENDO,
+                providerTrackId = "101",
+                sources = listOf(jamSource, audSource)
+            )
+
+            // 1. Initial resolution chooses Jamendo without asking user
+            val initial = PlaybackRouter.resolveInitialPlayback(multiSourceTrack)
+            assertTrue(initial is PlaybackResolution.AudioPlayback)
+            assertEquals(ProviderId.JAMENDO, (initial as PlaybackResolution.AudioPlayback).activeSource.providerId)
+
+            // 2. Play track via ViewModel, then emit PlaybackError on primary source
+            vm.playTrack(multiSourceTrack, openPlayer = true)
+            testScheduler.runCurrent()
+            assertEquals(ProviderId.JAMENDO, vm.uiState.value.currentTrack?.providerId)
+            assertEquals("https://cdn.example.com/primary_broken.mp3", fakePlayer.lastPlayedQueue.first().streamUrl)
+
+            fakePlayer.emitError("HTTP 503", failedTrackId = multiSourceTrack.id)
+            testScheduler.runCurrent()
+
+            // ViewModel automatically fails over to Audius backup source in the same player UI
+            assertEquals(ProviderId.AUDIUS, vm.uiState.value.currentTrack?.providerId)
+            assertEquals("https://cdn.example.com/backup_audius.mp3", fakePlayer.lastPlayedQueue.first().streamUrl)
+            assertTrue(vm.uiState.value.isNowPlayingOpen)
+            assertNull(vm.uiState.value.playbackErrorMessage)
+        } finally {
+            store.clear()
+        }
     }
 
     @Test
@@ -351,6 +728,45 @@ class ExampleUnitTest {
         println("YOUTUBE_LIVE_TEST_SUMMARY results=${results.size}")
     }
 
+    @Test
+    fun `live unified Home catalog loads available providers concurrently and preserves provider identity`() = runBlocking {
+        val jamendoRepo = JamendoRepository()
+        val audius = AudiusMusicProvider()
+        val youtube = YouTubeMusicProvider()
+        val catalogService = UnifiedMusicCatalogService(
+            jamendoRepository = jamendoRepo,
+            jamendoProvider = JamendoMusicProvider(jamendoRepo),
+            audiusProvider = audius,
+            youTubeProvider = youtube
+        )
+
+        val home = catalogService.loadHomeCatalog(forceRefresh = true)
+        assertTrue("Expected non-empty unified Trending Now", home.trendingNow.isNotEmpty())
+        assertTrue("Expected non-empty unified Popular Tracks", home.popularTracks.isNotEmpty())
+        assertTrue("Expected non-empty unified Recommended Music", home.recommendedTracks.isNotEmpty())
+        assertTrue("Expected non-empty unified New Releases", home.newReleases.isNotEmpty())
+        assertTrue("Home catalog must never contain YouTube embed-only tracks", (home.trendingNow + home.popularTracks + home.recommendedTracks + home.newReleases).none { it.providerId == ProviderId.YOUTUBE })
+
+        val jamTrend = home.trendingNow.count { it.providerId == ProviderId.JAMENDO }
+        val audTrend = home.trendingNow.count { it.providerId == ProviderId.AUDIUS }
+        val jamPop = home.popularTracks.count { it.providerId == ProviderId.JAMENDO }
+        val audPop = home.popularTracks.count { it.providerId == ProviderId.AUDIUS }
+        val jamRec = home.recommendedTracks.count { it.providerId == ProviderId.JAMENDO }
+        val audRec = home.recommendedTracks.count { it.providerId == ProviderId.AUDIUS }
+        val jamNew = home.newReleases.count { it.providerId == ProviderId.JAMENDO }
+        val audNew = home.newReleases.count { it.providerId == ProviderId.AUDIUS }
+
+        println(
+            "UNIFIED_HOME_LIVE_SUMMARY jamendoConfigured=${jamendoRepo.isConfigured} " +
+                "youtubeConfigured=${youtube.isEnabled} " +
+                "trendingTotal=${home.trendingNow.size}(jam=$jamTrend,aud=$audTrend) " +
+                "popularTotal=${home.popularTracks.size}(jam=$jamPop,aud=$audPop) " +
+                "recommendedTotal=${home.recommendedTracks.size}(jam=$jamRec,aud=$audRec) " +
+                "newTotal=${home.newReleases.size}(jam=$jamNew,aud=$audNew) " +
+                "failures=${home.providerFailures.map { "${it.providerId.id}:unconfigured=${it.isUnconfigured}" }}"
+        )
+    }
+
     private fun probeHttpRangeStatus(url: String): Int {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
@@ -371,9 +787,11 @@ class ExampleUnitTest {
             clientId: String,
             format: String,
             limit: Int,
+            offset: Int?,
             audioFormat: String,
             include: String,
             order: String?,
+            boost: String?,
             search: String?,
             tags: String?,
             featured: Int?,
@@ -392,7 +810,13 @@ class ExampleUnitTest {
                     releaseDate = "2026-01-15",
                     albumImage = "https://cdn.example.com/cover.jpg",
                     audio = "https://cdn.example.com/audio.mp3",
-                    licenseCcUrl = "https://creativecommons.org/licenses/by-nc-sa/3.0/"
+                    licenseCcUrl = "https://creativecommons.org/licenses/by-nc-sa/3.0/",
+                    stats = JamendoTrackStatsDto(
+                        rateListenedTotal = 14200,
+                        rateDownloadsTotal = 850,
+                        playlisted = 120,
+                        favorited = 410
+                    )
                 )
             )
         )
@@ -401,6 +825,7 @@ class ExampleUnitTest {
             clientId: String,
             format: String,
             limit: Int,
+            offset: Int?,
             order: String?,
             nameSearch: String?,
             hasImage: Boolean?
@@ -412,6 +837,7 @@ class ExampleUnitTest {
             clientId: String,
             format: String,
             limit: Int,
+            offset: Int?,
             order: String?,
             nameSearch: String?,
             artistId: String?
@@ -428,6 +854,45 @@ class ExampleUnitTest {
         )
     }
 
+    private class FailingJamendoApiService : JamendoApiService {
+        private fun fail(): Nothing = throw IOException("Simulated Jamendo timeout")
+        override suspend fun getTracks(
+            clientId: String,
+            format: String,
+            limit: Int,
+            offset: Int?,
+            audioFormat: String,
+            include: String,
+            order: String?,
+            boost: String?,
+            search: String?,
+            tags: String?,
+            featured: Int?,
+            artistId: String?,
+            albumId: String?
+        ): JamendoTracksResponse = fail()
+
+        override suspend fun getArtists(
+            clientId: String,
+            format: String,
+            limit: Int,
+            offset: Int?,
+            order: String?,
+            nameSearch: String?,
+            hasImage: Boolean?
+        ): JamendoArtistsResponse = fail()
+
+        override suspend fun getAlbums(
+            clientId: String,
+            format: String,
+            limit: Int,
+            offset: Int?,
+            order: String?,
+            nameSearch: String?,
+            artistId: String?
+        ): JamendoAlbumsResponse = fail()
+    }
+
     private class FakeAudiusApiService(private val streamGated: Boolean = false) : AudiusApiService {
         private val sampleTrack = AudiusTrackDto(
             id = "a1",
@@ -435,6 +900,10 @@ class ExampleUnitTest {
             duration = 195,
             genre = "Electronic",
             permalink = "/audiuscreator/midnight-signal",
+            playCount = 32400,
+            repostCount = 410,
+            favoriteCount = 1890,
+            releaseDate = "2026-11-20T00:00:00Z",
             isAvailable = true,
             isDelete = false,
             isStreamable = !streamGated,
@@ -445,10 +914,10 @@ class ExampleUnitTest {
             user = AudiusUserDto(id = "u1", name = "Audius Creator", handle = "audiuscreator")
         )
 
-        override suspend fun getTrendingTracks(time: String, limit: Int, appName: String) =
+        override suspend fun getTrendingTracks(time: String, limit: Int, offset: Int, genre: String?, appName: String) =
             AudiusTracksResponse(data = listOf(sampleTrack))
 
-        override suspend fun searchTracks(query: String, limit: Int, appName: String) =
+        override suspend fun searchTracks(query: String, limit: Int, offset: Int, appName: String) =
             AudiusTracksResponse(data = listOf(sampleTrack))
 
         override suspend fun getTrack(trackId: String, appName: String) =
@@ -477,8 +946,8 @@ class ExampleUnitTest {
 
     private class FailingAudiusApiService : AudiusApiService {
         private fun fail(): Nothing = throw IOException("Simulated network timeout")
-        override suspend fun getTrendingTracks(time: String, limit: Int, appName: String): AudiusTracksResponse = fail()
-        override suspend fun searchTracks(query: String, limit: Int, appName: String): AudiusTracksResponse = fail()
+        override suspend fun getTrendingTracks(time: String, limit: Int, offset: Int, genre: String?, appName: String): AudiusTracksResponse = fail()
+        override suspend fun searchTracks(query: String, limit: Int, offset: Int, appName: String): AudiusTracksResponse = fail()
         override suspend fun getTrack(trackId: String, appName: String): AudiusSingleTrackResponse = fail()
         override suspend fun searchUsers(query: String, limit: Int, appName: String): AudiusUsersResponse = fail()
         override suspend fun getUser(userId: String, appName: String): AudiusSingleUserResponse = fail()
@@ -537,9 +1006,16 @@ class ExampleUnitTest {
         var currentShuffle: Boolean = false
         var currentRepeatMode: RepeatMode = RepeatMode.OFF
         var lastSeekMs: Long = 0L
+        var lastPlayedQueue: List<Track> = emptyList()
         private var playing: Boolean = false
 
+        fun emitError(message: String, failedTrackId: String? = null) {
+            playing = false
+            _events.tryEmit(PlaybackEngineEvent.PlaybackError(message, failedTrackId))
+        }
+
         override fun setQueueAndPlay(tracks: List<Track>, startIndex: Int) {
+            lastPlayedQueue = tracks
             playing = true
             val track = tracks.getOrNull(startIndex)
             _events.tryEmit(PlaybackEngineEvent.BufferingChanged(false))

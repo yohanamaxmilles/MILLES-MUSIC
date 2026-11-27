@@ -14,7 +14,9 @@ data class Track(
     val licenseUrl: String? = null,
     val providerId: ProviderId = ProviderId.JAMENDO,
     val providerLabel: String = providerId.displayName,
-    val isVideoEmbedOnly: Boolean = false
+    val isVideoEmbedOnly: Boolean = false,
+    val matchedProviders: List<ProviderId> = listOf(providerId),
+    val trendLabel: String? = null
 )
 
 data class LyricLine(val timeMs: Long, val text: String)

@@ -40,6 +40,40 @@ data class ArtworkDescriptor(
 )
 
 @Immutable
+data class TrackSource(
+    val providerId: ProviderId,
+    val providerTrackId: String,
+    val streamUrl: String? = null,
+    val originalProviderUrl: String? = null,
+    val licenseType: String = "",
+    val attributionInfo: String = "",
+    val licenseUrl: String? = null,
+    val commercialUsePermitted: Boolean = false,
+    val streamingPermitted: Boolean = !streamUrl.isNullOrBlank(),
+    val territoryRestrictions: String? = null,
+    val isVideoEmbedOnly: Boolean = false,
+    val isrc: String? = null,
+    val durationSeconds: Int = 0,
+    val album: String = ""
+) {
+    val sourceKey: String
+        get() = "${providerId.id}:$providerTrackId"
+}
+
+@Immutable
+data class TrendMetrics(
+    val providerRank: Int? = null,
+    val listensOrPlays: Long? = null,
+    val downloads: Long? = null,
+    val favorites: Long? = null,
+    val reposts: Long? = null,
+    val playlistAdds: Long? = null,
+    val trendScore: Double = 0.0,
+    val freshnessBoost: Double = 0.0,
+    val sourceChartLabel: String? = null
+)
+
+@Immutable
 data class Track(
     val id: String,
     val title: String,
@@ -66,8 +100,55 @@ data class Track(
     val licenseType: String = attributionLabel,
     val territoryRestrictions: String? = null,
     val streamingPermitted: Boolean = !streamUrl.isNullOrBlank(),
-    val isVideoEmbedOnly: Boolean = false
-)
+    val isVideoEmbedOnly: Boolean = false,
+    val isrc: String? = null,
+    val sources: List<TrackSource> = emptyList(),
+    val trendMetrics: TrendMetrics? = null
+) {
+    fun resolvedSources(): List<TrackSource> =
+        sources.ifEmpty {
+            listOf(
+                TrackSource(
+                    providerId = providerId,
+                    providerTrackId = providerTrackId,
+                    streamUrl = streamUrl,
+                    originalProviderUrl = originalProviderUrl ?: shareUrl,
+                    licenseType = licenseType,
+                    attributionInfo = attributionLabel,
+                    licenseUrl = licenseUrl,
+                    commercialUsePermitted = isCommercialLicensed,
+                    streamingPermitted = streamingPermitted,
+                    territoryRestrictions = territoryRestrictions,
+                    isVideoEmbedOnly = isVideoEmbedOnly,
+                    isrc = isrc,
+                    durationSeconds = durationSeconds,
+                    album = album
+                )
+            )
+        }
+
+    fun authorizedAudioSources(): List<TrackSource> =
+        resolvedSources().filter {
+            !it.isVideoEmbedOnly && it.streamingPermitted && !it.streamUrl.isNullOrBlank()
+        }
+
+    val matchedProviders: List<ProviderId>
+        get() = resolvedSources().map { it.providerId }.distinct()
+
+    fun withActiveSource(source: TrackSource): Track = copy(
+        providerId = source.providerId,
+        providerTrackId = source.providerTrackId,
+        streamUrl = source.streamUrl,
+        originalProviderUrl = source.originalProviderUrl ?: originalProviderUrl,
+        licenseType = source.licenseType.ifBlank { licenseType },
+        attributionLabel = source.attributionInfo.ifBlank { attributionLabel },
+        licenseUrl = source.licenseUrl ?: licenseUrl,
+        isCommercialLicensed = source.commercialUsePermitted,
+        streamingPermitted = source.streamingPermitted && !source.isVideoEmbedOnly && !source.streamUrl.isNullOrBlank(),
+        territoryRestrictions = source.territoryRestrictions,
+        isVideoEmbedOnly = source.isVideoEmbedOnly
+    )
+}
 
 @Immutable
 data class Artist(

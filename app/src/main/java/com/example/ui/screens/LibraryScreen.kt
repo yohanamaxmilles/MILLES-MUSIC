@@ -60,7 +60,7 @@ enum class LibrarySegment(val label: String) {
     Liked("Liked Songs")
 }
 
-/** One Library for everything saved and Jamendo Artists/Albums. */
+/** One Library for everything saved and catalog Artists/Albums. */
 @Composable
 fun LibraryScreen(
     liked: List<Track>,
@@ -108,7 +108,7 @@ fun LibraryScreen(
                 item {
                     LibraryEmptyCard(
                         title = "No liked songs yet",
-                        subtitle = "Tap the heart icon on any Jamendo track to save it here."
+                        subtitle = "Tap the heart icon on any track to save it here."
                     )
                 }
             } else {
@@ -165,7 +165,7 @@ fun LibraryScreen(
                                     strokeWidth = 2.5.dp,
                                     modifier = Modifier.size(20.dp)
                                 )
-                                Text("Loading ${seg.label.lowercase()} from Jamendo…", color = palette.textPrimary)
+                                Text("Loading ${seg.label.lowercase()}…", color = palette.textPrimary)
                             }
                         }
                         catalogErrorMessage != null -> {
@@ -195,7 +195,7 @@ fun LibraryScreen(
                         else -> {
                             LibraryEmptyCard(
                                 title = "No ${seg.label.lowercase()} available",
-                                subtitle = "Try refreshing when connected to Jamendo."
+                                subtitle = "Try refreshing when connected to music providers."
                             )
                         }
                     }

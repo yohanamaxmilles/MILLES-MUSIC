@@ -162,7 +162,7 @@ fun NowPlayingScreen(
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("PLAYING FROM", fontSize = 10.sp, letterSpacing = 1.5.sp, color = Color(0x99FFFFFF))
                     Text(
-                        state.source.ifBlank { "Jamendo Stream" },
+                        state.source.ifBlank { "MILLES Stream" },
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
                         maxLines = 1,

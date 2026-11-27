@@ -88,6 +88,10 @@ data class AudiusTrackDto(
     val mood: String? = null,
     val permalink: String? = null,
     val license: String? = null,
+    val isrc: String? = null,
+    @Json(name = "play_count") val playCount: Long? = null,
+    @Json(name = "repost_count") val repostCount: Long? = null,
+    @Json(name = "favorite_count") val favoriteCount: Long? = null,
     @Json(name = "release_date") val releaseDate: String? = null,
     @Json(name = "created_at") val createdAt: String? = null,
     @Json(name = "is_available") val isAvailable: Boolean? = true,
@@ -123,6 +127,8 @@ interface AudiusApiService {
     suspend fun getTrendingTracks(
         @Query("time") time: String = "week",
         @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int = 0,
+        @Query("genre") genre: String? = null,
         @Query("app_name") appName: String = APP_NAME
     ): AudiusTracksResponse
 
@@ -130,6 +136,7 @@ interface AudiusApiService {
     suspend fun searchTracks(
         @Query("query") query: String,
         @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int = 0,
         @Query("app_name") appName: String = APP_NAME
     ): AudiusTracksResponse
 

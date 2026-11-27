@@ -21,13 +21,15 @@ import retrofit2.HttpException
  */
 class YouTubeMusicProvider(
     private val apiService: YouTubeApiService = YouTubeApiFactory.create(),
-    private val apiKey: String = BuildConfig.YOUTUBE_API_KEY
+    apiKey: String = YouTubeApiFactory.configuredApiKey()
 ) : MusicProvider {
+
+    private val normalizedApiKey: String = YouTubeApiFactory.normalizeApiKey(apiKey)
 
     override val providerId: ProviderId = ProviderId.YOUTUBE
     override val displayName: String = "YouTube"
     override val isEnabled: Boolean
-        get() = apiKey.isNotBlank() && apiKey != PLACEHOLDER_API_KEY
+        get() = YouTubeApiFactory.isConfigured(normalizedApiKey)
 
     override suspend fun searchTracks(query: String, limit: Int): Result<List<UnifiedTrack>> {
         val clean = query.trim()
@@ -39,7 +41,7 @@ class YouTubeMusicProvider(
             val searchResp = apiService.searchMusicVideos(
                 maxResults = limit.coerceIn(1, 20),
                 query = clean,
-                apiKey = apiKey
+                apiKey = normalizedApiKey
             )
             val items = searchResp.items.filter { !it.id?.videoId.isNullOrBlank() }
             if (items.isEmpty()) return@executeQuery emptyList()
@@ -48,7 +50,7 @@ class YouTubeMusicProvider(
             val detailsById = runCatching {
                 apiService.getVideoDetails(
                     videoIds = ids.joinToString(","),
-                    apiKey = apiKey
+                    apiKey = normalizedApiKey
                 ).items.associateBy { it.id }
             }.getOrDefault(emptyMap())
 
@@ -69,7 +71,7 @@ class YouTubeMusicProvider(
         }
         val videoId = trackId.removePrefix(TRACK_PREFIX)
         return executeQuery {
-            val detail = apiService.getVideoDetails(videoIds = videoId, apiKey = apiKey)
+            val detail = apiService.getVideoDetails(videoIds = videoId, apiKey = normalizedApiKey)
                 .items.firstOrNull()
                 ?: throw IllegalStateException("Video unavailable on YouTube.")
             if (detail.status?.embeddable == false) {
@@ -151,7 +153,10 @@ class YouTubeMusicProvider(
         } catch (_: IOException) {
             Result.failure(IllegalStateException("Unable to reach YouTube. Check network connection."))
         } catch (ise: IllegalStateException) {
-            Result.failure(ise)
+            val safeMsg = ise.message
+                ?.takeIf { normalizedApiKey.isBlank() || !it.contains(normalizedApiKey) }
+                ?: "Unable to complete YouTube request."
+            Result.failure(IllegalStateException(safeMsg))
         } catch (_: Throwable) {
             // Never leak raw URL or API key query parameter in error messages.
             Result.failure(IllegalStateException("Unable to search YouTube."))
@@ -180,7 +185,7 @@ class YouTubeMusicProvider(
     class YouTubeUnconfiguredException(message: String) : IllegalStateException(message)
 
     companion object {
-        const val PLACEHOLDER_API_KEY = "MY_YOUTUBE_API_KEY"
+        const val PLACEHOLDER_API_KEY = YouTubeApiFactory.PLACEHOLDER_API_KEY
         const val TRACK_PREFIX = "yt_"
 
         fun parseIso8601DurationSeconds(isoDuration: String?): Int {

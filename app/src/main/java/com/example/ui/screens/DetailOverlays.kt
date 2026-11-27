@@ -66,6 +66,7 @@ import com.example.model.ProviderId
 import com.example.model.Track
 import com.example.state.ProfileSheetType
 import com.example.state.formatDuration
+import com.example.state.formatTrendMetricsLabel
 import com.example.state.toUiTrack
 import com.example.ui.components.GlassIconButton
 import com.example.ui.components.ProviderBadgeChip
@@ -491,7 +492,18 @@ fun TrackOptionsSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Provider, License & Attribution", style = MaterialTheme.typography.labelSmall, color = Milles.Lime)
-                    ProviderBadgeChip(providerId = track.providerId)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        track.matchedProviders.forEach { matchedProvider ->
+                            ProviderBadgeChip(providerId = matchedProvider)
+                        }
+                    }
+                }
+                formatTrendMetricsLabel(track.trendMetrics)?.let { trendSummary ->
+                    Text(
+                        text = "Chart metrics: $trendSummary",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = palette.textPrimary
+                    )
                 }
                 Text(track.licenseType, style = MaterialTheme.typography.bodyMedium, color = palette.textPrimary)
                 if (track.attributionLabel != track.licenseType) {

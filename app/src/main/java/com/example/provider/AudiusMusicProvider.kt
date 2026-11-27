@@ -1,12 +1,16 @@
 package com.example.provider
 
 import com.example.model.ProviderId
+import com.example.model.TrackSource
+import com.example.model.TrendMetrics
 import com.example.network.AudiusApiFactory
 import com.example.network.AudiusApiService
 import com.example.network.AudiusPlaylistDto
 import com.example.network.AudiusTrackDto
 import com.example.network.AudiusUserDto
 import java.io.IOException
+import java.util.logging.Level
+import java.util.logging.Logger
 import kotlin.coroutines.cancellation.CancellationException
 import retrofit2.HttpException
 
@@ -14,14 +18,70 @@ class AudiusMusicProvider(
     private val apiService: AudiusApiService = AudiusApiFactory.create()
 ) : MusicProvider {
 
+    private val logger = Logger.getLogger("AudiusMusicProvider")
+
     override val providerId: ProviderId = ProviderId.AUDIUS
     override val displayName: String = "Audius"
     override val isEnabled: Boolean = true
 
-    suspend fun fetchTrendingTracks(limit: Int = 18): Result<List<UnifiedTrack>> =
+    suspend fun fetchTrendingTracks(
+        limit: Int = 20,
+        offset: Int = 0,
+        time: String = "week",
+        genre: String? = null
+    ): Result<List<UnifiedTrack>> =
         executeQuery {
-            val response = apiService.getTrendingTracks(limit = limit)
-            response.data.mapNotNull { it.toUnifiedTrackOrNull(isTrending = true) }
+            val response = apiService.getTrendingTracks(
+                time = time,
+                limit = limit,
+                offset = offset,
+                genre = genre
+            )
+            val chartLabel = when (time) {
+                "month" -> "Audius Monthly Chart"
+                "allTime" -> "Audius All-Time Chart"
+                else -> "Audius Trending"
+            }
+            response.data.mapIndexedNotNull { index, dto ->
+                dto.toUnifiedTrackOrNull(
+                    isTrending = true,
+                    chartRank = offset + index + 1,
+                    chartLabel = chartLabel
+                )
+            }
+        }
+
+    suspend fun fetchNewReleases(limit: Int = 16, offset: Int = 0): Result<List<UnifiedTrack>> =
+        executeQuery {
+            val response = apiService.getTrendingTracks(
+                time = "week",
+                limit = (limit * 2).coerceAtMost(40),
+                offset = offset
+            )
+            response.data
+                .mapNotNull { dto -> dto.toUnifiedTrackOrNull(isNewRelease = true) }
+                .sortedByDescending { it.releaseDate.orEmpty() }
+                .take(limit)
+        }
+
+    suspend fun fetchTracksByGenre(genre: String, limit: Int = 20, offset: Int = 0): Result<List<UnifiedTrack>> =
+        executeQuery {
+            val audiusGenre = mapAudiusGenre(genre)
+            val trending = runCatching {
+                apiService.getTrendingTracks(
+                    time = "week",
+                    limit = limit,
+                    offset = offset,
+                    genre = audiusGenre
+                ).data.mapNotNull { it.toUnifiedTrackOrNull() }
+            }.getOrDefault(emptyList())
+
+            if (trending.isNotEmpty()) {
+                trending
+            } else {
+                apiService.searchTracks(query = genre, limit = limit, offset = offset)
+                    .data.mapNotNull { it.toUnifiedTrackOrNull() }
+            }
         }
 
     suspend fun searchArtists(query: String, limit: Int = 10): Result<List<UnifiedArtist>> {
@@ -35,11 +95,14 @@ class AudiusMusicProvider(
         }
     }
 
-    override suspend fun searchTracks(query: String, limit: Int): Result<List<UnifiedTrack>> {
+    override suspend fun searchTracks(query: String, limit: Int): Result<List<UnifiedTrack>> =
+        searchTracks(query = query, limit = limit, offset = 0)
+
+    suspend fun searchTracks(query: String, limit: Int, offset: Int): Result<List<UnifiedTrack>> {
         val clean = query.trim()
         if (clean.isEmpty()) return Result.success(emptyList())
         return executeQuery {
-            val response = apiService.searchTracks(query = clean, limit = limit)
+            val response = apiService.searchTracks(query = clean, limit = limit, offset = offset)
             response.data.mapNotNull { it.toUnifiedTrackOrNull() }
         }
     }
@@ -121,21 +184,30 @@ class AudiusMusicProvider(
         } catch (ce: CancellationException) {
             throw ce
         } catch (http: HttpException) {
+            logger.log(Level.WARNING, "Audius HTTP error: ${http.code()}")
             val msg = when (http.code()) {
                 429 -> "Audius rate limit reached. Please retry in a moment."
                 403, 404, 410 -> "Requested content is unavailable on Audius."
                 else -> "Audius service error (HTTP ${http.code()})."
             }
             Result.failure(AudiusApiException(msg, isRateLimited = http.code() == 429))
-        } catch (_: IOException) {
+        } catch (io: IOException) {
+            logger.log(Level.WARNING, "Audius network error: ${io.javaClass.simpleName}")
             Result.failure(AudiusApiException("Unable to reach Audius. Check network connection."))
         } catch (ise: IllegalStateException) {
+            logger.log(Level.WARNING, "Audius state error: ${ise.message}")
             Result.failure(ise)
-        } catch (_: Throwable) {
+        } catch (err: Throwable) {
+            logger.log(Level.WARNING, "Audius unexpected error: ${err.javaClass.simpleName}")
             Result.failure(AudiusApiException("Unable to load data from Audius."))
         }
 
-    private fun AudiusTrackDto.toUnifiedTrackOrNull(isTrending: Boolean = false): UnifiedTrack? {
+    private fun AudiusTrackDto.toUnifiedTrackOrNull(
+        isTrending: Boolean = false,
+        isNewRelease: Boolean = false,
+        chartRank: Int? = null,
+        chartLabel: String? = null
+    ): UnifiedTrack? {
         if (isDelete == true || isAvailable == false || isUnlisted == true) return null
         val permitted = isStreamable != false && isStreamGated != true && (access?.stream != false)
         val authorizedStream = if (permitted) {
@@ -157,9 +229,44 @@ class AudiusMusicProvider(
             )
 
         val licenseLabel = rawLicense ?: "Audius Creator Stream · Non-commercial unless licensed"
+        val attributionText = "Audius · $artistDisplay$handlePart · Attribution required"
         val sourceUrl = permalink?.takeIf { it.isNotBlank() }?.let { path ->
             if (path.startsWith("http")) path else "https://audius.co$path"
         } ?: "https://audius.co"
+
+        val cleanIsrc = isrc?.trim()?.takeIf { it.isNotBlank() }
+        val cleanAlbum = genre?.takeIf { it.isNotBlank() } ?: "Audius Single"
+        val cleanDuration = duration.coerceAtLeast(1)
+
+        val hasMetrics = chartRank != null || playCount != null || favoriteCount != null || repostCount != null
+        val metrics = if (hasMetrics) {
+            TrendMetrics(
+                providerRank = chartRank,
+                listensOrPlays = playCount,
+                downloads = null,
+                favorites = favoriteCount,
+                reposts = repostCount,
+                playlistAdds = null,
+                sourceChartLabel = chartLabel
+            )
+        } else null
+
+        val source = TrackSource(
+            providerId = ProviderId.AUDIUS,
+            providerTrackId = id,
+            streamUrl = authorizedStream,
+            originalProviderUrl = sourceUrl,
+            licenseType = licenseLabel,
+            attributionInfo = attributionText,
+            licenseUrl = sourceUrl,
+            commercialUsePermitted = commercialAllowed,
+            streamingPermitted = permitted && !authorizedStream.isNullOrBlank(),
+            territoryRestrictions = null,
+            isVideoEmbedOnly = false,
+            isrc = cleanIsrc,
+            durationSeconds = cleanDuration,
+            album = cleanAlbum
+        )
 
         return UnifiedTrack(
             trackId = "$TRACK_PREFIX$id",
@@ -167,14 +274,14 @@ class AudiusMusicProvider(
             providerTrackId = id,
             title = title.ifBlank { "Untitled Track" },
             artist = artistDisplay,
-            album = genre?.takeIf { it.isNotBlank() } ?: "Audius Single",
+            album = cleanAlbum,
             genre = genre?.takeIf { it.isNotBlank() } ?: "Electronic",
-            durationSeconds = duration.coerceAtLeast(1),
+            durationSeconds = cleanDuration,
             artworkUrl = artwork?.bestUrl() ?: user?.profilePicture?.bestUrl(),
             streamUrl = authorizedStream,
             originalProviderUrl = sourceUrl,
             licenseType = licenseLabel,
-            attributionInfo = "Audius · $artistDisplay$handlePart · Attribution required",
+            attributionInfo = attributionText,
             commercialUsePermitted = commercialAllowed,
             streamingPermitted = permitted && !authorizedStream.isNullOrBlank(),
             territoryRestrictions = null,
@@ -183,8 +290,19 @@ class AudiusMusicProvider(
             albumId = null,
             releaseDate = releaseDate ?: createdAt,
             licenseUrl = sourceUrl,
-            isTrending = isTrending
+            isTrending = isTrending,
+            isNewRelease = isNewRelease,
+            isrc = cleanIsrc,
+            sources = listOf(source),
+            trendMetrics = metrics
         )
+    }
+
+    private fun mapAudiusGenre(genre: String): String = when (genre.trim().lowercase()) {
+        "hip hop", "hiphop", "hip-hop" -> "Hip-Hop/Rap"
+        "r&b", "rnb", "r&b/soul" -> "R&B/Soul"
+        "lo-fi", "lofi" -> "Lo-Fi"
+        else -> genre.trim()
     }
 
     private fun AudiusUserDto.toUnifiedArtist(): UnifiedArtist {

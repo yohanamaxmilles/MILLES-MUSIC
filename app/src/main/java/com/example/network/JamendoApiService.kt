@@ -37,6 +37,15 @@ data class JamendoHeadersDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class JamendoTrackStatsDto(
+    @Json(name = "rate_listened_total") val rateListenedTotal: Long? = null,
+    @Json(name = "rate_downloads_total") val rateDownloadsTotal: Long? = null,
+    val playlisted: Long? = null,
+    val favorited: Long? = null,
+    val likes: Long? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class JamendoTrackDto(
     val id: String,
     val name: String,
@@ -52,6 +61,8 @@ data class JamendoTrackDto(
     @Json(name = "shareurl") val shareUrl: String? = null,
     @Json(name = "license_ccurl") val licenseCcUrl: String? = null,
     @Json(name = "prourl") val proUrl: String? = null,
+    val isrc: String? = null,
+    val stats: JamendoTrackStatsDto? = null,
     val musicinfo: JamendoMusicInfoDto? = null
 )
 
@@ -93,9 +104,11 @@ interface JamendoApiService {
         @Query("client_id") clientId: String,
         @Query("format") format: String = "json",
         @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int? = null,
         @Query("audioformat") audioFormat: String = "mp32",
-        @Query("include") include: String = "musicinfo+licenses",
+        @Query(value = "include", encoded = true) include: String = "musicinfo+licenses+stats",
         @Query("order") order: String? = null,
+        @Query("boost") boost: String? = null,
         @Query("search") search: String? = null,
         @Query("tags") tags: String? = null,
         @Query("featured") featured: Int? = null,
@@ -108,6 +121,7 @@ interface JamendoApiService {
         @Query("client_id") clientId: String,
         @Query("format") format: String = "json",
         @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int? = null,
         @Query("order") order: String? = "popularity_week",
         @Query("namesearch") nameSearch: String? = null,
         @Query("hasimage") hasImage: Boolean? = true
@@ -118,6 +132,7 @@ interface JamendoApiService {
         @Query("client_id") clientId: String,
         @Query("format") format: String = "json",
         @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int? = null,
         @Query("order") order: String? = "popularity_week",
         @Query("namesearch") nameSearch: String? = null,
         @Query("artist_id") artistId: String? = null

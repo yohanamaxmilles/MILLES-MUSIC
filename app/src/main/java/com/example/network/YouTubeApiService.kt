@@ -1,5 +1,6 @@
 package com.example.network
 
+import com.example.BuildConfig
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import java.util.concurrent.TimeUnit
@@ -100,14 +101,14 @@ interface YouTubeApiService {
         @Query("videoEmbeddable") videoEmbeddable: String = "true",
         @Query("maxResults") maxResults: Int = 12,
         @Query("q") query: String,
-        @Query("key") apiKey: String
+        @Query("key") apiKey: String = YouTubeApiFactory.configuredApiKey()
     ): YouTubeSearchResponse
 
     @GET("videos")
     suspend fun getVideoDetails(
         @Query("part") part: String = "snippet,contentDetails,status",
         @Query("id") videoIds: String,
-        @Query("key") apiKey: String
+        @Query("key") apiKey: String = YouTubeApiFactory.configuredApiKey()
     ): YouTubeVideosResponse
 
     companion object {
@@ -116,6 +117,29 @@ interface YouTubeApiService {
 }
 
 object YouTubeApiFactory {
+    const val PLACEHOLDER_API_KEY = "MY_YOUTUBE_API_KEY"
+
+    fun normalizeApiKey(raw: String?): String {
+        val trimmed = raw?.trim().orEmpty()
+        return if (trimmed.length >= 2 &&
+            ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+                (trimmed.startsWith("'") && trimmed.endsWith("'")))
+        ) {
+            trimmed.substring(1, trimmed.length - 1).trim()
+        } else {
+            trimmed
+        }
+    }
+
+    fun configuredApiKey(): String = normalizeApiKey(BuildConfig.YOUTUBE_API_KEY)
+
+    fun isConfigured(apiKey: String = configuredApiKey()): Boolean {
+        val normalized = normalizeApiKey(apiKey)
+        return normalized.isNotBlank() &&
+            normalized != PLACEHOLDER_API_KEY &&
+            !normalized.equals("null", ignoreCase = true)
+    }
+
     fun create(): YouTubeApiService {
         // Deliberately omit HTTP URL/body logging so API key query parameters are never logged.
         val okHttpClient = OkHttpClient.Builder()

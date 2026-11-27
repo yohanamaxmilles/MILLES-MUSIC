@@ -1,4 +1,6 @@
+import com.android.build.api.variant.BuildConfigField
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -76,6 +78,83 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+}
+
+val dotEnvFile = rootProject.file(".env")
+val dotEnvProperties =
+    Properties().apply {
+      if (dotEnvFile.exists()) {
+        dotEnvFile.inputStream().use { load(it) }
+      }
+    }
+
+fun normalizeSecretValue(raw: String?): String =
+    raw?.trim()?.let { trimmed ->
+      if (trimmed.length >= 2 &&
+          ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+              (trimmed.startsWith("'") && trimmed.endsWith("'")))
+      ) {
+        trimmed.substring(1, trimmed.length - 1).trim()
+      } else {
+        trimmed
+      }
+    }.orEmpty()
+
+fun resolveEnvFallbackSecret(key: String, placeholder: String): String? {
+  val dotEnvValue = normalizeSecretValue(dotEnvProperties.getProperty(key))
+  if (dotEnvValue.isNotEmpty() && dotEnvValue != placeholder) {
+    return null
+  }
+  val envValue = normalizeSecretValue(System.getenv(key))
+  return envValue.takeIf { it.isNotEmpty() && it != placeholder && !it.equals("null", ignoreCase = true) }
+}
+
+androidComponents {
+  onVariants { variant ->
+    resolveEnvFallbackSecret("JAMENDO_CLIENT_ID", "MY_JAMENDO_CLIENT_ID")?.let { secret ->
+      val escaped = secret.replace("\\", "\\\\").replace("\"", "\\\"")
+      variant.buildConfigFields?.put(
+          "JAMENDO_CLIENT_ID",
+          BuildConfigField(
+              "String",
+              "\"$escaped\"",
+              "JAMENDO_CLIENT_ID injected from environment"
+          )
+      )
+    }
+    resolveEnvFallbackSecret("YOUTUBE_API_KEY", "MY_YOUTUBE_API_KEY")?.let { secret ->
+      val escaped = secret.replace("\\", "\\\\").replace("\"", "\\\"")
+      variant.buildConfigFields?.put(
+          "YOUTUBE_API_KEY",
+          BuildConfigField(
+              "String",
+              "\"$escaped\"",
+              "YOUTUBE_API_KEY injected from environment"
+          )
+      )
+    }
+  }
+}
+
+val dotEnvPresentAtConfig = dotEnvFile.exists()
+val jamDotEnvAtConfig = normalizeSecretValue(dotEnvProperties.getProperty("JAMENDO_CLIENT_ID"))
+val ytDotEnvAtConfig = normalizeSecretValue(dotEnvProperties.getProperty("YOUTUBE_API_KEY"))
+val jamEnvAtConfig = normalizeSecretValue(System.getenv("JAMENDO_CLIENT_ID"))
+val ytEnvAtConfig = normalizeSecretValue(System.getenv("YOUTUBE_API_KEY"))
+val jamConfiguredAtConfig =
+    (jamDotEnvAtConfig.isNotEmpty() && jamDotEnvAtConfig != "MY_JAMENDO_CLIENT_ID" && !jamDotEnvAtConfig.equals("null", ignoreCase = true)) ||
+        (jamEnvAtConfig.isNotEmpty() && jamEnvAtConfig != "MY_JAMENDO_CLIENT_ID" && !jamEnvAtConfig.equals("null", ignoreCase = true))
+val ytConfiguredAtConfig =
+    (ytDotEnvAtConfig.isNotEmpty() && ytDotEnvAtConfig != "MY_YOUTUBE_API_KEY" && !ytDotEnvAtConfig.equals("null", ignoreCase = true)) ||
+        (ytEnvAtConfig.isNotEmpty() && ytEnvAtConfig != "MY_YOUTUBE_API_KEY" && !ytEnvAtConfig.equals("null", ignoreCase = true))
+
+tasks.register("verifySecretsConfig") {
+  val hasDotEnv = dotEnvPresentAtConfig
+  val jamOk = jamConfiguredAtConfig
+  val ytOk = ytConfiguredAtConfig
+  doLast {
+    println("SECRETS_CHECK dotEnvExists=$hasDotEnv jamendoConfigured=$jamOk youtubeConfigured=$ytOk")
+  }
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }

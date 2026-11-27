@@ -8,6 +8,8 @@ import com.example.model.ArtworkDescriptor
 import com.example.model.Playlist
 import com.example.model.ProviderId
 import com.example.model.Track
+import com.example.model.TrackSource
+import com.example.model.TrendMetrics
 
 /**
  * Provider-independent track representation normalizing metadata, licensing,
@@ -36,8 +38,33 @@ data class UnifiedTrack(
     val releaseDate: String? = null,
     val licenseUrl: String? = null,
     val isTrending: Boolean = false,
-    val isNewRelease: Boolean = false
-)
+    val isNewRelease: Boolean = false,
+    val isrc: String? = null,
+    val sources: List<TrackSource> = emptyList(),
+    val trendMetrics: TrendMetrics? = null
+) {
+    fun resolvedSources(): List<TrackSource> =
+        sources.ifEmpty {
+            listOf(
+                TrackSource(
+                    providerId = providerId,
+                    providerTrackId = providerTrackId,
+                    streamUrl = if (streamingPermitted && !isVideoEmbedOnly) streamUrl else null,
+                    originalProviderUrl = originalProviderUrl,
+                    licenseType = licenseType,
+                    attributionInfo = attributionInfo,
+                    licenseUrl = licenseUrl,
+                    commercialUsePermitted = commercialUsePermitted,
+                    streamingPermitted = streamingPermitted && !isVideoEmbedOnly && !streamUrl.isNullOrBlank(),
+                    territoryRestrictions = territoryRestrictions,
+                    isVideoEmbedOnly = isVideoEmbedOnly,
+                    isrc = isrc,
+                    durationSeconds = durationSeconds,
+                    album = album
+                )
+            )
+        }
+}
 
 data class UnifiedArtist(
     val id: String,
@@ -147,7 +174,10 @@ fun UnifiedTrack.toDomainTrack(index: Int = 0): Track {
         licenseType = licenseType,
         territoryRestrictions = territoryRestrictions,
         streamingPermitted = streamingPermitted && !isVideoEmbedOnly && !streamUrl.isNullOrBlank(),
-        isVideoEmbedOnly = isVideoEmbedOnly
+        isVideoEmbedOnly = isVideoEmbedOnly,
+        isrc = isrc,
+        sources = resolvedSources(),
+        trendMetrics = trendMetrics
     )
 }
 

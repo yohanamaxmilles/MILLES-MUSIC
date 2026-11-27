@@ -227,8 +227,13 @@ fun TrackRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 ProviderBadgeChip(providerId = track.providerId)
+                val rowSubtitle = when {
+                    track.isVideoEmbedOnly -> "${track.artist} · Video"
+                    !track.trendLabel.isNullOrBlank() -> "${track.artist} · ${track.trendLabel}"
+                    else -> track.artist
+                }
                 Text(
-                    if (track.isVideoEmbedOnly) "${track.artist} · Video" else track.artist,
+                    rowSubtitle,
                     style = MaterialTheme.typography.bodyMedium,
                     color = palette.textSecondary,
                     maxLines = 1,

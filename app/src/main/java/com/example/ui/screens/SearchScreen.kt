@@ -70,6 +70,9 @@ fun SearchScreen(
     albums: List<Collection>,
     genres: List<Collection>,
     activeTrackId: String?,
+    hasMoreResults: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
     onRetry: () -> Unit,
     onTrack: (Track) -> Unit,
     onMoreTrack: (Track) -> Unit,
@@ -314,6 +317,32 @@ fun SearchScreen(
                         onMore = { onMoreTrack(track) },
                         onClick = { onTrack(track) }
                     )
+                }
+                if (hasMoreResults) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(palette.surfaceHigh)
+                                    .border(1.dp, palette.stroke, CircleShape)
+                                    .clickable(enabled = !isLoadingMore, onClick = onLoadMore)
+                                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                                    .testTag("search_load_more")
+                            ) {
+                                Text(
+                                    text = if (isLoadingMore) "Loading more…" else "Load more results",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = palette.textPrimary
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

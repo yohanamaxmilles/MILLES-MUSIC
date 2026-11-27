@@ -24,7 +24,7 @@ sealed interface PlaybackEngineEvent {
     data class TrackTransitioned(val trackId: String, val durationSeconds: Int?) : PlaybackEngineEvent
     data class ShuffleChanged(val enabled: Boolean) : PlaybackEngineEvent
     data class RepeatChanged(val mode: RepeatMode) : PlaybackEngineEvent
-    data class PlaybackError(val message: String) : PlaybackEngineEvent
+    data class PlaybackError(val message: String, val failedTrackId: String? = null) : PlaybackEngineEvent
     data object QueueEnded : PlaybackEngineEvent
 }
 
@@ -98,16 +98,17 @@ class MillesMediaController(context: Context) : PlaybackEngine {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            val failedMediaId = controller?.currentMediaItem?.mediaId
             val message = when (error.errorCode) {
                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                     "Network error while streaming track. Check connection and retry."
                 PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
                 PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
-                    "Track stream unavailable from Jamendo."
+                    "Track stream unavailable from provider."
                 else -> "Unable to play this audio stream."
             }
-            _events.tryEmit(PlaybackEngineEvent.PlaybackError(message))
+            _events.tryEmit(PlaybackEngineEvent.PlaybackError(message, failedTrackId = failedMediaId))
         }
     }
 

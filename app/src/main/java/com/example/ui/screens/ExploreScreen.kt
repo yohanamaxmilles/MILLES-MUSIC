@@ -48,6 +48,9 @@ fun ExploreScreen(
     newReleases: List<Track>,
     topCharts: List<Track>,
     activeTrackId: String?,
+    hasMoreTopCharts: Boolean = false,
+    isLoadingMoreTopCharts: Boolean = false,
+    onLoadMoreTopCharts: () -> Unit = {},
     onRetry: () -> Unit,
     onTrack: (Track) -> Unit,
     onMoreTrack: (Track) -> Unit,
@@ -83,7 +86,7 @@ fun ExploreScreen(
                         modifier = Modifier.size(22.dp)
                     )
                     Text(
-                        "Loading Jamendo releases and charts…",
+                        "Loading releases and charts…",
                         style = MaterialTheme.typography.titleMedium,
                         color = palette.textPrimary
                     )
@@ -167,7 +170,7 @@ fun ExploreScreen(
         }
 
         if (topCharts.isNotEmpty()) {
-            item { SectionHeader("Popular on Jamendo") }
+            item { SectionHeader("Trending Now") }
             itemsIndexed(topCharts, key = { _, t -> t.id }) { i, t ->
                 TrackRow(
                     track = t,
@@ -176,6 +179,32 @@ fun ExploreScreen(
                     onMore = { onMoreTrack(t) },
                     onClick = { onTrack(t) }
                 )
+            }
+            if (hasMoreTopCharts) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(palette.surfaceHigh)
+                                .border(1.dp, palette.stroke, CircleShape)
+                                .clickable(enabled = !isLoadingMoreTopCharts, onClick = onLoadMoreTopCharts)
+                                .padding(horizontal = 20.dp, vertical = 10.dp)
+                                .testTag("explore_load_more_trending")
+                        ) {
+                            Text(
+                                text = if (isLoadingMoreTopCharts) "Loading more…" else "Load more trending",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = palette.textPrimary
+                            )
+                        }
+                    }
+                }
             }
         }
     }

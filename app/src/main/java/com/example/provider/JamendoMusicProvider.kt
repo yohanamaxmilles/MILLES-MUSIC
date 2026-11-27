@@ -17,8 +17,40 @@ class JamendoMusicProvider(
     override val isEnabled: Boolean
         get() = jamendoRepository.isConfigured
 
+    suspend fun fetchTrendingCharts(limit: Int = 20, offset: Int = 0): Result<List<UnifiedTrack>> =
+        jamendoRepository.fetchTrendingCharts(limit = limit, offset = offset).map { tracks ->
+            tracks.map { it.toUnifiedTrack() }
+        }
+
+    suspend fun fetchPopularTracks(limit: Int = 20, offset: Int = 0): Result<List<UnifiedTrack>> =
+        jamendoRepository.fetchPopularTracks(limit = limit, offset = offset).map { tracks ->
+            tracks.map { it.toUnifiedTrack() }
+        }
+
+    suspend fun fetchNewReleases(limit: Int = 16, offset: Int = 0): Result<List<UnifiedTrack>> =
+        jamendoRepository.fetchNewReleases(limit = limit, offset = offset).map { tracks ->
+            tracks.map { it.toUnifiedTrack() }
+        }
+
+    suspend fun fetchRecommendedTracks(
+        genreTag: String? = null,
+        limit: Int = 15,
+        offset: Int = 0
+    ): Result<List<UnifiedTrack>> =
+        jamendoRepository.fetchRecommendedTracks(genreTag = genreTag, limit = limit, offset = offset).map { tracks ->
+            tracks.map { it.toUnifiedTrack() }
+        }
+
+    suspend fun fetchTracksByGenre(genreTag: String, limit: Int = 20, offset: Int = 0): Result<List<UnifiedTrack>> =
+        jamendoRepository.fetchTracksByGenre(genreTag = genreTag, limit = limit, offset = offset).map { tracks ->
+            tracks.map { it.toUnifiedTrack() }
+        }
+
     override suspend fun searchTracks(query: String, limit: Int): Result<List<UnifiedTrack>> =
-        jamendoRepository.searchTracks(query = query, limit = limit).map { tracks ->
+        searchTracks(query = query, limit = limit, offset = 0)
+
+    suspend fun searchTracks(query: String, limit: Int, offset: Int): Result<List<UnifiedTrack>> =
+        jamendoRepository.searchTracks(query = query, limit = limit, offset = offset).map { tracks ->
             tracks.map { it.toUnifiedTrack() }
         }
 
@@ -131,6 +163,9 @@ class JamendoMusicProvider(
         releaseDate = releaseDate,
         licenseUrl = licenseUrl,
         isTrending = isTrending,
-        isNewRelease = isNewRelease
+        isNewRelease = isNewRelease,
+        isrc = isrc,
+        sources = resolvedSources(),
+        trendMetrics = trendMetrics
     )
 }
