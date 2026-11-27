@@ -12,7 +12,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -203,7 +203,7 @@ fun NowPlayingScreen(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PlayerIcon(Icons.AutoMirrored.Rounded.QueueMusic, "Minimize player", onMinimize)
+                    PlayerIcon(Icons.Filled.KeyboardArrowDown, "Minimize player", onMinimize, size = 29.dp)
                     Spacer(Modifier.weight(1f))
                     Text(
                         "NOW PLAYING",
