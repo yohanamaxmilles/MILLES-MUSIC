@@ -74,6 +74,8 @@ The migration must resolve these differences deliberately. Do not downgrade the 
 - [x] Added a MediaController connector for the UI layer.
 - [x] Added a validated MediaItem factory for provider-resolved streams.
 - [ ] Import and pin the complete upstream source tree or selectively port required source modules.
-- [ ] Connect the existing ViewModel and UI controls to MediaController state.
+- [x] Connect the existing ViewModel and UI controls to MediaController state.
+- [x] Replace simulated playback progress with real Media3 player state.
+- [x] Add optional stream URL support to the domain track model.
 - [ ] Add a compliant catalogue/source adapter that returns authorised playable streams.
 - [ ] Build and test on Android.
