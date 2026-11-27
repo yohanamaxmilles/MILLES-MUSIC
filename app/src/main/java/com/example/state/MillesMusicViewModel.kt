@@ -7,17 +7,15 @@ import com.example.model.Album
 import com.example.model.Artist
 import com.example.model.ArtworkDescriptor
 import com.example.model.AudioQuality
-import com.example.model.ExploreFilter
-import com.example.model.FavoritesFilter
 import com.example.model.GenreCategory
-import com.example.model.LibraryFilter
-import com.example.model.MainTab
 import com.example.model.Playlist
 import com.example.model.RepeatMode
 import com.example.model.SampleCatalog
 import com.example.model.SecondaryDestination
 import com.example.model.ThemeMode
 import com.example.model.Track
+import com.example.ui.PlayerUiState
+import com.example.ui.components.MillesTab
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,9 +25,7 @@ import kotlinx.coroutines.launch
 
 @Immutable
 data class MillesUiState(
-    val isSplashVisible: Boolean = true,
-    val splashProgress: Float = 0.25f,
-    val activeTab: MainTab = MainTab.HOME,
+    val activeTab: MillesTab = MillesTab.Home,
     val secondaryStack: List<SecondaryDestination> = emptyList(),
     val isNowPlayingOpen: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.DARK,
@@ -38,6 +34,7 @@ data class MillesUiState(
     // Playback state
     val currentTrack: Track = SampleCatalog.tracks.first(),
     val queue: List<Track> = SampleCatalog.tracks,
+    val playbackSource: String = "Trending Now",
     val isPlaying: Boolean = false,
     val progressSeconds: Int = 45,
     val isShuffleEnabled: Boolean = false,
@@ -45,17 +42,12 @@ data class MillesUiState(
     val audioQuality: AudioQuality = AudioQuality.HIGH,
 
     // Discovery & Library state
-    val exploreFilter: ExploreFilter = ExploreFilter.GENRES,
-    val libraryFilter: LibraryFilter = LibraryFilter.PLAYLISTS,
-    val favoritesFilter: FavoritesFilter = FavoritesFilter.ALL,
     val searchQuery: String = "",
-    val recentSearches: List<String> = SampleCatalog.recentSearches,
     val favoriteTrackIds: Set<String> = SampleCatalog.initialFavoriteTrackIds,
     val userPlaylists: List<Playlist> = SampleCatalog.initialUserPlaylists,
 
     // UI overlays
     val isCreatePlaylistOpen: Boolean = false,
-    val isQueueSheetOpen: Boolean = false,
     val isAudioQualitySheetOpen: Boolean = false,
     val trackOptionsTarget: Track? = null,
     val profileDetailSheet: ProfileSheetType? = null,
@@ -84,21 +76,7 @@ class MillesMusicViewModel : ViewModel() {
     val uiState: StateFlow<MillesUiState> = _uiState.asStateFlow()
 
     init {
-        runSplashSequence()
         runPlaybackTicker()
-    }
-
-    private fun runSplashSequence() {
-        viewModelScope.launch {
-            val steps = 16
-            for (i in 1..steps) {
-                delay(75L)
-                val progress = 0.15f + (0.85f * i / steps)
-                _uiState.update { it.copy(splashProgress = progress) }
-            }
-            delay(140L)
-            _uiState.update { it.copy(isSplashVisible = false) }
-        }
     }
 
     private fun runPlaybackTicker() {
@@ -127,7 +105,7 @@ class MillesMusicViewModel : ViewModel() {
         skipToNext(autoTriggered = true)
     }
 
-    fun selectTab(tab: MainTab) {
+    fun selectTab(tab: MillesTab) {
         _uiState.update {
             it.copy(
                 activeTab = tab,
@@ -149,10 +127,6 @@ class MillesMusicViewModel : ViewModel() {
     fun navigateBack(): Boolean {
         val state = _uiState.value
         return when {
-            state.isQueueSheetOpen -> {
-                _uiState.update { it.copy(isQueueSheetOpen = false) }
-                true
-            }
             state.isAudioQualitySheetOpen -> {
                 _uiState.update { it.copy(isAudioQualitySheetOpen = false) }
                 true
@@ -189,7 +163,6 @@ class MillesMusicViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 isNowPlayingOpen = false,
-                isQueueSheetOpen = false,
                 isAudioQualitySheetOpen = false,
                 trackOptionsTarget = null
             )
@@ -200,12 +173,18 @@ class MillesMusicViewModel : ViewModel() {
         _uiState.update { it.copy(isPlaying = !it.isPlaying) }
     }
 
-    fun playTrack(track: Track, customQueue: List<Track>? = null, openPlayer: Boolean = false) {
+    fun playTrack(
+        track: Track,
+        customQueue: List<Track>? = null,
+        source: String? = null,
+        openPlayer: Boolean = false
+    ) {
         _uiState.update { state ->
             val newQueue = customQueue ?: if (state.queue.any { it.id == track.id }) state.queue else SampleCatalog.tracks
             state.copy(
                 currentTrack = track,
                 queue = newQueue,
+                playbackSource = source ?: track.album,
                 isPlaying = true,
                 progressSeconds = if (state.currentTrack.id == track.id) state.progressSeconds else 0,
                 isNowPlayingOpen = openPlayer || state.isNowPlayingOpen
@@ -213,17 +192,16 @@ class MillesMusicViewModel : ViewModel() {
         }
     }
 
-    fun playPlaylist(playlist: Playlist, shuffled: Boolean = false) {
-        val tracks = SampleCatalog.tracksByIds(playlist.trackIds).ifEmpty { SampleCatalog.tracks }
-        val ordered = if (shuffled) tracks.shuffled() else tracks
-        playTrack(ordered.first(), customQueue = ordered, openPlayer = false)
-        _uiState.update { it.copy(isShuffleEnabled = shuffled) }
-        showStatusBanner("Playing ${playlist.title}")
-    }
-
     fun playHeroMix() {
         val mix = SampleCatalog.tracks.filter { it.isTrending }.ifEmpty { SampleCatalog.tracks }
-        playTrack(mix.first(), customQueue = mix, openPlayer = true)
+        playTrack(mix.first(), customQueue = mix, source = "Good Music, Every Day", openPlayer = true)
+    }
+
+    fun playTracksCollection(tracks: List<Track>, source: String, shuffled: Boolean, openPlayer: Boolean = false) {
+        if (tracks.isEmpty()) return
+        val ordered = if (shuffled) tracks.shuffled() else tracks
+        _uiState.update { it.copy(isShuffleEnabled = shuffled) }
+        playTrack(ordered.first(), customQueue = ordered, source = source, openPlayer = openPlayer)
     }
 
     fun seekTo(seconds: Int) {
@@ -231,6 +209,10 @@ class MillesMusicViewModel : ViewModel() {
             val clamped = seconds.coerceIn(0, state.currentTrack.durationSeconds)
             state.copy(progressSeconds = clamped)
         }
+    }
+
+    fun seekMs(positionMs: Long) {
+        seekTo((positionMs / 1000L).toInt())
     }
 
     fun skipToNext(autoTriggered: Boolean = false) {
@@ -270,7 +252,7 @@ class MillesMusicViewModel : ViewModel() {
         _uiState.update { state ->
             val next = when (state.repeatMode) {
                 RepeatMode.OFF -> RepeatMode.ALL
-                RepeatMode.ALL -> RepeatMode.ONE
+                RepeatMode.ALL -> RepeatMode.OFF
                 RepeatMode.ONE -> RepeatMode.OFF
             }
             state.copy(repeatMode = next)
@@ -290,34 +272,11 @@ class MillesMusicViewModel : ViewModel() {
             }
             state.copy(favoriteTrackIds = next)
         }
-        showStatusBanner(if (added) "Added to Favorites" else "Removed from Favorites")
-    }
-
-    fun setExploreFilter(filter: ExploreFilter) {
-        _uiState.update { it.copy(exploreFilter = filter) }
-    }
-
-    fun setLibraryFilter(filter: LibraryFilter) {
-        _uiState.update { it.copy(libraryFilter = filter) }
-    }
-
-    fun setFavoritesFilter(filter: FavoritesFilter) {
-        _uiState.update { it.copy(favoritesFilter = filter) }
+        showStatusBanner(if (added) "Added to Liked Songs" else "Removed from Liked Songs")
     }
 
     fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-    }
-
-    fun submitSearchQuery(query: String) {
-        val trimmed = query.trim()
-        if (trimmed.isEmpty()) return
-        _uiState.update { state ->
-            val updatedRecent = (listOf(trimmed) + state.recentSearches.filterNot {
-                it.equals(trimmed, ignoreCase = true)
-            }).take(6)
-            state.copy(searchQuery = trimmed, recentSearches = updatedRecent)
-        }
     }
 
     fun selectThemeMode(mode: ThemeMode) {
@@ -339,10 +298,6 @@ class MillesMusicViewModel : ViewModel() {
             )
         }
         showStatusBanner("Audio quality set to ${quality.title}")
-    }
-
-    fun setQueueSheetOpen(open: Boolean) {
-        _uiState.update { it.copy(isQueueSheetOpen = open) }
     }
 
     fun setAudioQualitySheetOpen(open: Boolean) {
@@ -367,9 +322,10 @@ class MillesMusicViewModel : ViewModel() {
             subtitle = cleanSubtitle,
             trackIds = listOf(_uiState.value.currentTrack.id),
             artwork = ArtworkDescriptor(
+                imageRes = _uiState.value.currentTrack.artwork.imageRes,
                 primaryColor = androidx.compose.ui.graphics.Color(0xFF282B20),
-                secondaryColor = androidx.compose.ui.graphics.Color(0xFF151611),
-                accentColor = androidx.compose.ui.graphics.Color(0xFFC6ED65),
+                secondaryColor = androidx.compose.ui.graphics.Color(0xFF050505),
+                accentColor = androidx.compose.ui.graphics.Color(0xFFC6F24E),
                 patternVariant = (_uiState.value.userPlaylists.size % 6) + 1
             ),
             displayedSongCount = 1,
@@ -378,8 +334,7 @@ class MillesMusicViewModel : ViewModel() {
         _uiState.update { state ->
             state.copy(
                 userPlaylists = listOf(newPlaylist) + state.userPlaylists,
-                isCreatePlaylistOpen = false,
-                libraryFilter = LibraryFilter.PLAYLISTS
+                isCreatePlaylistOpen = false
             )
         }
         showStatusBanner("Created playlist \"$cleanTitle\"")
@@ -442,6 +397,57 @@ class MillesMusicViewModel : ViewModel() {
     fun findAlbum(id: String): Album? =
         SampleCatalog.albums.find { it.id == id }
 }
+
+/** Maps domain Track into the new UI Track model used by the /ui composables. */
+fun Track.toUiTrack(): com.example.ui.Track = com.example.ui.Track(
+    id = id,
+    title = title,
+    artist = artist,
+    coverUrl = artwork.imageRes,
+    durationMs = durationSeconds * 1000L
+)
+
+fun Playlist.toUiCollection(): com.example.ui.Collection = com.example.ui.Collection(
+    id = id,
+    title = title,
+    subtitle = subtitle,
+    coverUrl = artwork.imageRes
+)
+
+fun Album.toUiCollection(): com.example.ui.Collection = com.example.ui.Collection(
+    id = id,
+    title = title,
+    subtitle = "$artist · $year",
+    coverUrl = artwork.imageRes
+)
+
+fun Artist.toUiCollection(): com.example.ui.Collection = com.example.ui.Collection(
+    id = id,
+    title = name,
+    subtitle = genre,
+    coverUrl = artwork.imageRes
+)
+
+fun GenreCategory.toUiCollection(): com.example.ui.Collection = com.example.ui.Collection(
+    id = id,
+    title = name,
+    subtitle = subtitle,
+    coverUrl = artwork.imageRes
+)
+
+fun MillesUiState.toPlayerUiState(): PlayerUiState = PlayerUiState(
+    track = currentTrack.toUiTrack(),
+    isPlaying = isPlaying,
+    positionMs = progressSeconds * 1000L,
+    isLiked = isCurrentTrackFavorite,
+    shuffle = isShuffleEnabled,
+    repeat = repeatMode != RepeatMode.OFF,
+    quality = audioQuality.shortLabel,
+    source = playbackSource,
+    queue = queue.map { it.toUiTrack() },
+    related = SampleCatalog.tracks.filter { it.id != currentTrack.id }.take(8).map { it.toUiTrack() },
+    lyrics = SampleCatalog.lyricsForTrack(currentTrack.id)
+)
 
 fun formatDuration(totalSeconds: Int): String {
     val safe = totalSeconds.coerceAtLeast(0)

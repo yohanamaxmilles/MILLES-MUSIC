@@ -2,9 +2,9 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.model.MainTab
 import com.example.model.ThemeMode
 import com.example.state.MillesMusicViewModel
+import com.example.ui.components.MillesTab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,8 +26,8 @@ class ExampleRobolectricTest {
     @Test
     fun `view model handles playlist creation, favorites, and theme switching`() {
         val vm = MillesMusicViewModel()
-        vm.selectTab(MainTab.LIBRARY)
-        assertEquals(MainTab.LIBRARY, vm.uiState.value.activeTab)
+        vm.selectTab(MillesTab.Library)
+        assertEquals(MillesTab.Library, vm.uiState.value.activeTab)
 
         val initialCount = vm.uiState.value.userPlaylists.size
         vm.createPlaylist("Midnight Groove", "Late night drive")

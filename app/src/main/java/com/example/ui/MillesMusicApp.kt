@@ -10,53 +10,47 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.model.MainTab
+import com.example.R
 import com.example.model.SampleCatalog
 import com.example.model.SecondaryDestination
 import com.example.state.MillesMusicViewModel
 import com.example.state.MillesUiState
-import com.example.ui.components.MillesBottomNavBar
-import com.example.ui.components.MillesMiniPlayer
-import com.example.ui.components.MillesNavigationRail
+import com.example.state.toPlayerUiState
+import com.example.state.toUiCollection
+import com.example.state.toUiTrack
+import com.example.ui.components.MiniPlayer
+import com.example.ui.components.MillesTab
 import com.example.ui.screens.AudioQualitySheet
 import com.example.ui.screens.CollectionDetailScreen
 import com.example.ui.screens.CreatePlaylistModal
 import com.example.ui.screens.ExploreScreen
-import com.example.ui.screens.FavoritesScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LibraryScreen
+import com.example.ui.screens.LibrarySegment
 import com.example.ui.screens.NowPlayingScreen
+import com.example.ui.screens.PlayerActions
 import com.example.ui.screens.ProfileDetailSheet
 import com.example.ui.screens.ProfileScreen
-import com.example.ui.screens.QueueBottomSheet
 import com.example.ui.screens.SearchScreen
-import com.example.ui.screens.SplashScreen
 import com.example.ui.screens.ThemeScreen
 import com.example.ui.screens.TrackOptionsSheet
-import com.example.ui.theme.MillesMusicTheme
-import com.example.ui.theme.MillesRadius
+import com.example.ui.theme.LocalMillesPalette
+import com.example.ui.theme.Milles
 import com.example.ui.theme.MillesTheme
 
 @Composable
@@ -65,47 +59,111 @@ fun MillesMusicApp(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    MillesMusicTheme(themeMode = uiState.themeMode) {
-        val colors = MillesTheme.colors
+    MillesTheme(themeMode = uiState.themeMode) {
+        val palette = LocalMillesPalette.current
+        val playerUiState = remember(uiState) { uiState.toPlayerUiState() }
+
+        val playerActions = remember(viewModel) {
+            object : PlayerActions {
+                override fun onBack() = viewModel.closeNowPlaying()
+                override fun onPlayPause() = viewModel.togglePlayPause()
+                override fun onNext() = viewModel.skipToNext(autoTriggered = false)
+                override fun onPrevious() = viewModel.skipToPrevious()
+                override fun onSeek(positionMs: Long) = viewModel.seekMs(positionMs)
+                override fun onLike() = viewModel.toggleFavorite(viewModel.uiState.value.currentTrack.id)
+                override fun onShuffle() = viewModel.toggleShuffle()
+                override fun onRepeat() = viewModel.cycleRepeatMode()
+                override fun onMore() = viewModel.openTrackOptions(viewModel.uiState.value.currentTrack)
+                override fun onQualityClick() = viewModel.setAudioQualitySheetOpen(true)
+                override fun onTrackClick(track: Track) {
+                    SampleCatalog.trackById(track.id)?.let { domainTrack ->
+                        viewModel.playTrack(domainTrack, openPlayer = true)
+                    }
+                }
+            }
+        }
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(colors.backgroundMain)
+                .background(palette.background)
         ) {
-            if (uiState.isSplashVisible) {
-                SplashScreen(progress = uiState.splashProgress)
+            val activeSecondary = uiState.activeSecondary
+            val fullScreenSecondary = activeSecondary is SecondaryDestination.Profile ||
+                activeSecondary is SecondaryDestination.ThemeSettings
+
+            if (fullScreenSecondary) {
+                when (activeSecondary) {
+                    is SecondaryDestination.Profile -> {
+                        ProfileScreen(
+                            themeMode = uiState.themeMode,
+                            onBack = { viewModel.navigateBack() },
+                            onOpenThemeSettings = { viewModel.navigateTo(SecondaryDestination.ThemeSettings) },
+                            onOpenSheet = viewModel::openProfileSheet,
+                            onLogoutNotice = { viewModel.showStatusBanner("Account sync arrives in Phase 2") }
+                        )
+                    }
+                    is SecondaryDestination.ThemeSettings -> {
+                        ThemeScreen(
+                            themeMode = uiState.themeMode,
+                            onSelectThemeMode = viewModel::selectThemeMode,
+                            onToggleDynamicTheme = viewModel::toggleDynamicTheme,
+                            onBack = { viewModel.navigateBack() }
+                        )
+                    }
+                    else -> Unit
+                }
             } else {
-                MainShell(uiState = uiState, viewModel = viewModel)
+                MillesShell(
+                    tab = uiState.activeTab,
+                    onTab = viewModel::selectTab,
+                    miniPlayer = {
+                        val progress = (uiState.progressSeconds.toFloat() /
+                            uiState.currentTrack.durationSeconds.coerceAtLeast(1)).coerceIn(0f, 1f)
+                        MiniPlayer(
+                            track = playerUiState.track,
+                            isPlaying = uiState.isPlaying,
+                            progress = progress,
+                            isLiked = uiState.isCurrentTrackFavorite,
+                            onOpen = viewModel::openNowPlaying,
+                            onPlayPause = viewModel::togglePlayPause,
+                            onLike = { viewModel.toggleFavorite(uiState.currentTrack.id) }
+                        )
+                    }
+                ) { bottomInset ->
+                    AnimatedContent(
+                        targetState = Pair(uiState.activeTab, activeSecondary),
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        label = "shell_content"
+                    ) { (tab, secondary) ->
+                        if (secondary != null) {
+                            DetailContent(
+                                destination = secondary,
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                bottomInset = bottomInset
+                            )
+                        } else {
+                            TabContent(
+                                tab = tab,
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                bottomInset = bottomInset
+                            )
+                        }
+                    }
+                }
             }
 
-            // Full-screen Now Playing Player Slide-Up Overlay
+            // Full-screen Now Playing Slide-Up Overlay
             AnimatedVisibility(
-                visible = !uiState.isSplashVisible && uiState.isNowPlayingOpen,
+                visible = uiState.isNowPlayingOpen,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
             ) {
                 NowPlayingScreen(
-                    track = uiState.currentTrack,
-                    queue = uiState.queue,
-                    relatedTracks = SampleCatalog.tracks.filter { it.id != uiState.currentTrack.id }.take(8),
-                    isPlaying = uiState.isPlaying,
-                    progressSeconds = uiState.progressSeconds,
-                    isFavorite = uiState.isCurrentTrackFavorite,
-                    isShuffleEnabled = uiState.isShuffleEnabled,
-                    repeatMode = uiState.repeatMode,
-                    audioQuality = uiState.audioQuality,
-                    onMinimize = viewModel::closeNowPlaying,
-                    onTogglePlayPause = viewModel::togglePlayPause,
-                    onSeek = viewModel::seekTo,
-                    onNext = { viewModel.skipToNext(autoTriggered = false) },
-                    onPrevious = viewModel::skipToPrevious,
-                    onToggleFavorite = { viewModel.toggleFavorite(uiState.currentTrack.id) },
-                    onToggleShuffle = viewModel::toggleShuffle,
-                    onCycleRepeat = viewModel::cycleRepeatMode,
-                    onOpenAudioQuality = { viewModel.setAudioQualitySheetOpen(true) },
-                    onOpenTrackOptions = { viewModel.openTrackOptions(uiState.currentTrack) },
-                    onSelectTrack = { selected -> viewModel.playTrack(selected, openPlayer = true) }
+                    state = playerUiState,
+                    actions = playerActions
                 )
             }
 
@@ -114,19 +172,6 @@ fun MillesMusicApp(
                 CreatePlaylistModal(
                     onDismiss = { viewModel.setCreatePlaylistOpen(false) },
                     onCreate = viewModel::createPlaylist
-                )
-            }
-
-            if (uiState.isQueueSheetOpen) {
-                QueueBottomSheet(
-                    queue = uiState.queue,
-                    currentTrackId = uiState.currentTrack.id,
-                    isPlaying = uiState.isPlaying,
-                    onSelectTrack = { track ->
-                        viewModel.playTrack(track)
-                        viewModel.setQueueSheetOpen(false)
-                    },
-                    onDismiss = { viewModel.setQueueSheetOpen(false) }
                 )
             }
 
@@ -173,15 +218,15 @@ fun MillesMusicApp(
                 uiState.statusBannerMessage?.let { message ->
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(MillesRadius.Pill))
-                            .background(colors.surfaceElevated)
-                            .border(1.dp, colors.lime.copy(alpha = 0.65f), RoundedCornerShape(MillesRadius.Pill))
+                            .clip(CircleShape)
+                            .background(palette.surfaceHigh)
+                            .border(1.dp, Milles.Lime.copy(alpha = 0.7f), CircleShape)
                             .padding(horizontal = 18.dp, vertical = 10.dp)
                     ) {
                         Text(
                             text = message,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = colors.textPrimary
+                            style = MaterialTheme.typography.titleMedium,
+                            color = palette.textPrimary
                         )
                     }
                 }
@@ -191,107 +236,40 @@ fun MillesMusicApp(
 }
 
 @Composable
-private fun MainShell(
-    uiState: MillesUiState,
-    viewModel: MillesMusicViewModel
-) {
-    val colors = MillesTheme.colors
-    val activeSecondary = uiState.activeSecondary
-    val showBottomNavigation = activeSecondary !is SecondaryDestination.ThemeSettings
-
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val isWideLayout = maxWidth >= 720.dp
-        val bottomScrollPadding = if (showBottomNavigation && !isWideLayout) 168.dp else 104.dp
-
-        Row(modifier = Modifier.fillMaxSize()) {
-            if (isWideLayout && showBottomNavigation) {
-                MillesNavigationRail(
-                    activeTab = uiState.activeTab,
-                    onSelectTab = viewModel::selectTab
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxSize()
-                    .background(colors.backgroundMain)
-                    .windowInsetsPadding(WindowInsets.statusBars)
-            ) {
-                AnimatedContent(
-                    targetState = Pair(uiState.activeTab, activeSecondary),
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "screen_transition"
-                ) { (tab, secondary) ->
-                    if (secondary != null) {
-                        SecondaryDestinationContent(
-                            destination = secondary,
-                            uiState = uiState,
-                            viewModel = viewModel,
-                            bottomContentPadding = bottomScrollPadding
-                        )
-                    } else {
-                        PrimaryTabContent(
-                            tab = tab,
-                            uiState = uiState,
-                            viewModel = viewModel,
-                            bottomContentPadding = bottomScrollPadding
-                        )
-                    }
-                }
-
-                // Docked Mini Player + Custom Bottom Navigation Bar
-                if (showBottomNavigation) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .then(
-                                if (isWideLayout) Modifier.navigationBarsPadding()
-                                else Modifier
-                            )
-                    ) {
-                        MillesMiniPlayer(
-                            track = uiState.currentTrack,
-                            isPlaying = uiState.isPlaying,
-                            isFavorite = uiState.isCurrentTrackFavorite,
-                            progressSeconds = uiState.progressSeconds,
-                            onOpenNowPlaying = viewModel::openNowPlaying,
-                            onTogglePlayPause = viewModel::togglePlayPause,
-                            onToggleFavorite = { viewModel.toggleFavorite(uiState.currentTrack.id) }
-                        )
-                        if (!isWideLayout) {
-                            MillesBottomNavBar(
-                                activeTab = uiState.activeTab,
-                                onSelectTab = viewModel::selectTab
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PrimaryTabContent(
-    tab: MainTab,
+private fun TabContent(
+    tab: MillesTab,
     uiState: MillesUiState,
     viewModel: MillesMusicViewModel,
-    bottomContentPadding: androidx.compose.ui.unit.Dp
+    bottomInset: androidx.compose.ui.unit.Dp
 ) {
+    val trendingTracks = remember {
+        SampleCatalog.tracks.filter { it.isTrending }.map { it.toUiTrack() }
+    }
+    val madeForYouTracks = remember {
+        SampleCatalog.tracks.reversed().take(6).map { it.toUiTrack() }
+    }
+    val newReleases = remember {
+        SampleCatalog.tracks.filter { it.isNewRelease }.map { it.toUiTrack() }
+    }
+    val topCharts = remember {
+        SampleCatalog.tracks.map { it.toUiTrack() }
+    }
+
     when (tab) {
-        MainTab.HOME -> {
+        MillesTab.Home -> {
             HomeScreen(
-                currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                favoriteTrackIds = uiState.favoriteTrackIds,
-                onOpenSearch = { viewModel.navigateTo(SecondaryDestination.Search) },
-                onOpenProfile = { viewModel.selectTab(MainTab.PROFILE) },
-                onPlayHeroMix = viewModel::playHeroMix,
-                onOpenPlaylist = { playlist ->
-                    viewModel.navigateTo(SecondaryDestination.PlaylistDetail(playlist.id))
+                heroCover = R.drawable.img_hero_music,
+                avatar = R.drawable.img_cover_midnight,
+                trending = trendingTracks,
+                madeForYou = madeForYouTracks,
+                isHeroPlaying = uiState.isPlaying && uiState.playbackSource == "Good Music, Every Day",
+                onPlayHero = viewModel::playHeroMix,
+                onTrack = { uiTrack ->
+                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                        viewModel.playTrack(track, source = "Trending Now")
+                    }
                 },
+                onProfile = { viewModel.navigateTo(SecondaryDestination.Profile) },
                 onSeeAllTrending = {
                     viewModel.navigateTo(
                         SecondaryDestination.CollectionOverview(
@@ -308,148 +286,131 @@ private fun PrimaryTabContent(
                         )
                     )
                 },
-                onPlayTrack = { track -> viewModel.playTrack(track) },
-                onToggleFavorite = viewModel::toggleFavorite,
-                onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
+                bottomInset = bottomInset
             )
         }
 
-        MainTab.EXPLORE -> {
+        MillesTab.Explore -> {
             ExploreScreen(
-                selectedFilter = uiState.exploreFilter,
-                currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                favoriteTrackIds = uiState.favoriteTrackIds,
-                onSelectFilter = viewModel::setExploreFilter,
-                onOpenSearch = { viewModel.navigateTo(SecondaryDestination.Search) },
-                onOpenGenre = { genre ->
-                    viewModel.navigateTo(SecondaryDestination.GenreDetail(genre.id))
-                },
-                onOpenArtist = { artist ->
-                    viewModel.navigateTo(SecondaryDestination.ArtistDetail(artist.id))
-                },
-                onPlayTrack = { track -> viewModel.playTrack(track) },
-                onToggleFavorite = viewModel::toggleFavorite,
-                onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
-            )
-        }
-
-        MainTab.LIBRARY -> {
-            LibraryScreen(
-                selectedFilter = uiState.libraryFilter,
-                playlists = uiState.userPlaylists,
-                favoriteTracks = uiState.favoriteTracks,
-                currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                onSelectFilter = viewModel::setLibraryFilter,
-                onOpenSearch = { viewModel.navigateTo(SecondaryDestination.Search) },
-                onCreatePlaylist = { viewModel.setCreatePlaylistOpen(true) },
-                onOpenPlaylist = { playlist ->
-                    viewModel.navigateTo(SecondaryDestination.PlaylistDetail(playlist.id))
-                },
-                onOpenAlbum = { album ->
-                    viewModel.navigateTo(SecondaryDestination.AlbumDetail(album.id))
-                },
-                onOpenArtist = { artist ->
-                    viewModel.navigateTo(SecondaryDestination.ArtistDetail(artist.id))
-                },
-                onPlayTrack = { track -> viewModel.playTrack(track) },
-                onToggleFavorite = viewModel::toggleFavorite,
-                onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
-            )
-        }
-
-        MainTab.FAVORITES -> {
-            FavoritesScreen(
-                favoriteTracks = uiState.favoriteTracks,
-                selectedFilter = uiState.favoritesFilter,
-                currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                onSelectFilter = viewModel::setFavoritesFilter,
-                onPlayAll = { tracks, shuffled ->
-                    val ordered = if (shuffled) tracks.shuffled() else tracks
-                    if (ordered.isNotEmpty()) {
-                        viewModel.playTrack(ordered.first(), customQueue = ordered, openPlayer = false)
+                newReleases = newReleases,
+                topCharts = topCharts,
+                activeTrackId = uiState.currentTrack.id,
+                onTrack = { uiTrack ->
+                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                        viewModel.playTrack(track, source = "Top Charts")
                     }
                 },
-                onPlayTrack = { track -> viewModel.playTrack(track) },
-                onToggleFavorite = viewModel::toggleFavorite,
-                onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
+                onMoreTrack = { uiTrack ->
+                    SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                },
+                bottomInset = bottomInset
             )
         }
 
-        MainTab.PROFILE -> {
-            ProfileScreen(
-                themeMode = uiState.themeMode,
-                onOpenThemeSettings = { viewModel.navigateTo(SecondaryDestination.ThemeSettings) },
-                onOpenSheet = viewModel::openProfileSheet,
-                onLogoutNotice = { viewModel.showStatusBanner("Account sync arrives in Phase 2") },
-                bottomContentPadding = bottomContentPadding
+        MillesTab.Library -> {
+            val likedUi = remember(uiState.favoriteTracks) { uiState.favoriteTracks.map { it.toUiTrack() } }
+            val playlistCols = remember(uiState.userPlaylists) { uiState.userPlaylists.map { it.toUiCollection() } }
+            val albumCols = remember { SampleCatalog.albums.map { it.toUiCollection() } }
+            val artistCols = remember { SampleCatalog.artists.map { it.toUiCollection() } }
+
+            LibraryScreen(
+                liked = likedUi,
+                playlists = playlistCols,
+                albums = albumCols,
+                artists = artistCols,
+                activeTrackId = uiState.currentTrack.id,
+                onTrack = { uiTrack ->
+                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                        viewModel.playTrack(track, customQueue = uiState.favoriteTracks, source = "Liked Songs")
+                    }
+                },
+                onMoreTrack = { uiTrack ->
+                    SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                },
+                onCollection = { collection, seg ->
+                    val dest = when (seg) {
+                        LibrarySegment.Playlists -> SecondaryDestination.PlaylistDetail(collection.id)
+                        LibrarySegment.Albums -> SecondaryDestination.AlbumDetail(collection.id)
+                        LibrarySegment.Artists -> SecondaryDestination.ArtistDetail(collection.id)
+                        LibrarySegment.Liked -> null
+                    }
+                    dest?.let(viewModel::navigateTo)
+                },
+                onCreatePlaylist = { viewModel.setCreatePlaylistOpen(true) },
+                onPlayLiked = {
+                    viewModel.playTracksCollection(uiState.favoriteTracks, source = "Liked Songs", shuffled = false)
+                },
+                onShuffleLiked = {
+                    viewModel.playTracksCollection(uiState.favoriteTracks, source = "Liked Songs", shuffled = true)
+                },
+                bottomInset = bottomInset
+            )
+        }
+
+        MillesTab.Search -> {
+            val query = uiState.searchQuery
+            val results = remember(query) {
+                val q = query.trim()
+                if (q.isEmpty()) emptyList()
+                else SampleCatalog.tracks.filter {
+                    it.title.contains(q, ignoreCase = true) ||
+                        it.artist.contains(q, ignoreCase = true) ||
+                        it.album.contains(q, ignoreCase = true) ||
+                        it.genre.contains(q, ignoreCase = true)
+                }.map { it.toUiTrack() }
+            }
+            val genreCols = remember { SampleCatalog.genres.map { it.toUiCollection() } }
+
+            SearchScreen(
+                query = query,
+                onQuery = viewModel::updateSearchQuery,
+                results = results,
+                genres = genreCols,
+                activeTrackId = uiState.currentTrack.id,
+                onTrack = { uiTrack ->
+                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                        viewModel.playTrack(track, source = "Search")
+                    }
+                },
+                onMoreTrack = { uiTrack ->
+                    SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                },
+                onGenre = { genreCol ->
+                    viewModel.navigateTo(SecondaryDestination.GenreDetail(genreCol.id))
+                },
+                bottomInset = bottomInset
             )
         }
     }
 }
 
 @Composable
-private fun SecondaryDestinationContent(
+private fun DetailContent(
     destination: SecondaryDestination,
     uiState: MillesUiState,
     viewModel: MillesMusicViewModel,
-    bottomContentPadding: androidx.compose.ui.unit.Dp
+    bottomInset: androidx.compose.ui.unit.Dp
 ) {
     when (destination) {
-        is SecondaryDestination.Search -> {
-            SearchScreen(
-                query = uiState.searchQuery,
-                recentSearches = uiState.recentSearches,
-                onQueryChange = viewModel::updateSearchQuery,
-                onSubmitQuery = viewModel::submitSearchQuery,
-                onBack = { viewModel.navigateBack() },
-                onPlayTrack = { track -> viewModel.playTrack(track, openPlayer = true) },
-                onOpenArtist = { artist ->
-                    viewModel.navigateTo(SecondaryDestination.ArtistDetail(artist.id))
-                },
-                onOpenAlbum = { album ->
-                    viewModel.navigateTo(SecondaryDestination.AlbumDetail(album.id))
-                },
-                bottomContentPadding = bottomContentPadding
-            )
-        }
-
-        is SecondaryDestination.ThemeSettings -> {
-            ThemeScreen(
-                themeMode = uiState.themeMode,
-                onSelectThemeMode = viewModel::selectThemeMode,
-                onToggleDynamicTheme = viewModel::toggleDynamicTheme,
-                onBack = { viewModel.navigateBack() }
-            )
-        }
-
         is SecondaryDestination.PlaylistDetail -> {
             val playlist = viewModel.findPlaylist(destination.playlistId)
             val tracks = SampleCatalog.tracksByIds(playlist?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(4) }
             CollectionDetailScreen(
                 title = playlist?.title ?: "Playlist",
-                subtitle = "${playlist?.subtitle ?: "Curated"} · ${playlist?.displayedSongCount ?: tracks.size} songs",
-                artwork = playlist?.artwork ?: SampleCatalog.tracks.first().artwork,
+                subtitle = playlist?.subtitle ?: "",
+                coverUrl = playlist?.artwork?.imageRes ?: R.drawable.img_cover_afro,
                 tracks = tracks,
                 isCircularArtwork = false,
                 currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                favoriteTrackIds = uiState.favoriteTrackIds,
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
-                    val ordered = if (shuffled) tracks.shuffled() else tracks
-                    viewModel.playTrack(ordered.first(), customQueue = ordered, openPlayer = true)
+                    viewModel.playTracksCollection(tracks, source = playlist?.title ?: "Playlist", shuffled = shuffled, openPlayer = true)
                 },
-                onPlayTrack = { track -> viewModel.playTrack(track, customQueue = tracks) },
-                onToggleFavorite = viewModel::toggleFavorite,
+                onPlayTrack = { track ->
+                    viewModel.playTrack(track, customQueue = tracks, source = playlist?.title)
+                },
                 onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
+                bottomInset = bottomInset
             )
         }
 
@@ -458,22 +419,20 @@ private fun SecondaryDestinationContent(
             val tracks = SampleCatalog.tracksByIds(genre?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(4) }
             CollectionDetailScreen(
                 title = genre?.name ?: "Genre",
-                subtitle = "${genre?.subtitle ?: "Editorial"} · ${tracks.size} featured tracks",
-                artwork = genre?.artwork ?: SampleCatalog.tracks.first().artwork,
+                subtitle = genre?.subtitle ?: "",
+                coverUrl = genre?.artwork?.imageRes ?: R.drawable.img_cover_afro,
                 tracks = tracks,
                 isCircularArtwork = false,
                 currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                favoriteTrackIds = uiState.favoriteTrackIds,
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
-                    val ordered = if (shuffled) tracks.shuffled() else tracks
-                    viewModel.playTrack(ordered.first(), customQueue = ordered, openPlayer = true)
+                    viewModel.playTracksCollection(tracks, source = genre?.name ?: "Genre", shuffled = shuffled, openPlayer = true)
                 },
-                onPlayTrack = { track -> viewModel.playTrack(track, customQueue = tracks) },
-                onToggleFavorite = viewModel::toggleFavorite,
+                onPlayTrack = { track ->
+                    viewModel.playTrack(track, customQueue = tracks, source = genre?.name)
+                },
                 onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
+                bottomInset = bottomInset
             )
         }
 
@@ -485,21 +444,19 @@ private fun SecondaryDestinationContent(
             CollectionDetailScreen(
                 title = artist?.name ?: "Artist",
                 subtitle = artist?.monthlyListeners ?: "",
-                artwork = artist?.artwork ?: SampleCatalog.tracks.first().artwork,
+                coverUrl = artist?.artwork?.imageRes ?: R.drawable.img_cover_midnight,
                 tracks = tracks,
                 isCircularArtwork = true,
                 currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                favoriteTrackIds = uiState.favoriteTrackIds,
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
-                    val ordered = if (shuffled) tracks.shuffled() else tracks
-                    viewModel.playTrack(ordered.first(), customQueue = ordered, openPlayer = true)
+                    viewModel.playTracksCollection(tracks, source = artist?.name ?: "Artist", shuffled = shuffled, openPlayer = true)
                 },
-                onPlayTrack = { track -> viewModel.playTrack(track, customQueue = tracks) },
-                onToggleFavorite = viewModel::toggleFavorite,
+                onPlayTrack = { track ->
+                    viewModel.playTrack(track, customQueue = tracks, source = artist?.name)
+                },
                 onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
+                bottomInset = bottomInset
             )
         }
 
@@ -509,21 +466,19 @@ private fun SecondaryDestinationContent(
             CollectionDetailScreen(
                 title = album?.title ?: "Album",
                 subtitle = "${album?.artist ?: ""} · ${album?.year ?: 2026}",
-                artwork = album?.artwork ?: SampleCatalog.tracks.first().artwork,
+                coverUrl = album?.artwork?.imageRes ?: R.drawable.img_cover_chill,
                 tracks = tracks,
                 isCircularArtwork = false,
                 currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                favoriteTrackIds = uiState.favoriteTrackIds,
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
-                    val ordered = if (shuffled) tracks.shuffled() else tracks
-                    viewModel.playTrack(ordered.first(), customQueue = ordered, openPlayer = true)
+                    viewModel.playTracksCollection(tracks, source = album?.title ?: "Album", shuffled = shuffled, openPlayer = true)
                 },
-                onPlayTrack = { track -> viewModel.playTrack(track, customQueue = tracks) },
-                onToggleFavorite = viewModel::toggleFavorite,
+                onPlayTrack = { track ->
+                    viewModel.playTrack(track, customQueue = tracks, source = album?.title)
+                },
                 onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
+                bottomInset = bottomInset
             )
         }
 
@@ -532,22 +487,22 @@ private fun SecondaryDestinationContent(
             CollectionDetailScreen(
                 title = destination.title,
                 subtitle = "${tracks.size} curated tracks",
-                artwork = tracks.first().artwork,
+                coverUrl = tracks.first().artwork.imageRes ?: R.drawable.img_hero_music,
                 tracks = tracks,
                 isCircularArtwork = false,
                 currentTrackId = uiState.currentTrack.id,
-                isPlaying = uiState.isPlaying,
-                favoriteTrackIds = uiState.favoriteTrackIds,
                 onBack = { viewModel.navigateBack() },
                 onPlayAll = { shuffled ->
-                    val ordered = if (shuffled) tracks.shuffled() else tracks
-                    viewModel.playTrack(ordered.first(), customQueue = ordered, openPlayer = true)
+                    viewModel.playTracksCollection(tracks, source = destination.title, shuffled = shuffled, openPlayer = true)
                 },
-                onPlayTrack = { track -> viewModel.playTrack(track, customQueue = tracks) },
-                onToggleFavorite = viewModel::toggleFavorite,
+                onPlayTrack = { track ->
+                    viewModel.playTrack(track, customQueue = tracks, source = destination.title)
+                },
                 onOpenTrackOptions = viewModel::openTrackOptions,
-                bottomContentPadding = bottomContentPadding
+                bottomInset = bottomInset
             )
         }
+
+        else -> Unit
     }
 }

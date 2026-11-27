@@ -1,11 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,253 +13,120 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.R
-import com.example.model.Album
-import com.example.model.Artist
-import com.example.model.LibraryFilter
-import com.example.model.Playlist
-import com.example.model.SampleCatalog
-import com.example.model.Track
-import com.example.ui.components.MillesAlbumArtwork
-import com.example.ui.components.MillesCircleIconButton
-import com.example.ui.components.MillesPillChip
-import com.example.ui.theme.MillesRadius
-import com.example.ui.theme.MillesTheme
+import coil.compose.AsyncImage
+import com.example.ui.Collection
+import com.example.ui.Track
+import com.example.ui.components.FilterChips
+import com.example.ui.components.GlassIconButton
+import com.example.ui.components.ScreenTitle
+import com.example.ui.components.TrackRow
+import com.example.ui.theme.LocalMillesPalette
+import com.example.ui.theme.Milles
 
+enum class LibrarySegment(val label: String) {
+    Playlists("Playlists"),
+    Albums("Albums"),
+    Artists("Artists"),
+    Liked("Liked Songs")
+}
+
+/** One Library for everything saved. Favorites lives here as "Liked Songs". */
 @Composable
 fun LibraryScreen(
-    selectedFilter: LibraryFilter,
-    playlists: List<Playlist>,
-    favoriteTracks: List<Track>,
-    currentTrackId: String,
-    isPlaying: Boolean,
-    onSelectFilter: (LibraryFilter) -> Unit,
-    onOpenSearch: () -> Unit,
+    liked: List<Track>,
+    playlists: List<Collection>,
+    albums: List<Collection>,
+    artists: List<Collection>,
+    activeTrackId: String,
+    onTrack: (Track) -> Unit,
+    onMoreTrack: (Track) -> Unit,
+    onCollection: (Collection, LibrarySegment) -> Unit,
     onCreatePlaylist: () -> Unit,
-    onOpenPlaylist: (Playlist) -> Unit,
-    onOpenAlbum: (Album) -> Unit,
-    onOpenArtist: (Artist) -> Unit,
-    onPlayTrack: (Track) -> Unit,
-    onToggleFavorite: (String) -> Unit,
-    onOpenTrackOptions: (Track) -> Unit,
-    bottomContentPadding: Dp,
-    modifier: Modifier = Modifier
+    onPlayLiked: () -> Unit,
+    onShuffleLiked: () -> Unit,
+    bottomInset: Dp = 184.dp
 ) {
-    val colors = MillesTheme.colors
+    val palette = LocalMillesPalette.current
+    var seg by remember { mutableStateOf(LibrarySegment.Playlists) }
 
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter
+    LazyColumn(
+        Modifier
+            .fillMaxSize()
+            .background(palette.background)
+            .testTag("library_screen"),
+        contentPadding = PaddingValues(bottom = bottomInset)
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .widthIn(max = 760.dp)
-                .testTag("library_screen"),
-            contentPadding = PaddingValues(top = 14.dp, bottom = bottomContentPadding),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        item {
+            ScreenTitle("Library") {
+                GlassIconButton(
+                    icon = Icons.Rounded.Add,
+                    description = "Create playlist",
+                    tint = palette.textPrimary,
+                    onClick = onCreatePlaylist
+                )
+            }
+        }
+        item {
+            FilterChips(LibrarySegment.entries, seg, { it.label }) { seg = it }
+            Spacer(Modifier.height(12.dp))
+        }
+        if (seg == LibrarySegment.Liked) {
             item {
                 Row(
-                    modifier = Modifier
+                    Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.title_library),
-                        style = MaterialTheme.typography.displayLarge.copy(fontSize = 28.sp),
-                        color = colors.textPrimary
-                    )
-                    MillesCircleIconButton(
-                        icon = Icons.Filled.Search,
-                        contentDescription = stringResource(R.string.cd_search),
-                        onClick = onOpenSearch,
-                        modifier = Modifier.testTag("library_search_button")
-                    )
+                    ActionPill("Play", Icons.Rounded.PlayArrow, true, Modifier.weight(1f), onPlayLiked)
+                    ActionPill("Shuffle", Icons.Rounded.Shuffle, false, Modifier.weight(1f), onShuffleLiked)
                 }
             }
-
-            item {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(LibraryFilter.entries, key = { it.name }) { filter ->
-                        MillesPillChip(
-                            label = filter.label,
-                            selected = filter == selectedFilter,
-                            onClick = { onSelectFilter(filter) },
-                            modifier = Modifier.testTag("library_filter_${filter.name.lowercase()}")
-                        )
-                    }
-                }
+            items(liked, key = { it.id }) { track ->
+                TrackRow(
+                    track = track,
+                    active = track.id == activeTrackId,
+                    onMore = { onMoreTrack(track) },
+                    onClick = { onTrack(track) }
+                )
             }
-
-            if (selectedFilter == LibraryFilter.PLAYLISTS) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(MillesRadius.Pill))
-                            .background(colors.surface)
-                            .border(1.dp, colors.divider, RoundedCornerShape(MillesRadius.Pill))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(color = colors.lime),
-                                onClick = onCreatePlaylist
-                            )
-                            .padding(horizontal = 20.dp)
-                            .testTag("create_playlist_button"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = null,
-                            tint = colors.lime,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = stringResource(R.string.create_playlist),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.textPrimary
-                        )
-                    }
-                }
-
-                items(playlists, key = { it.id }) { playlist ->
-                    LibraryPlaylistRow(
-                        playlist = playlist,
-                        onClick = { onOpenPlaylist(playlist) },
-                        modifier = Modifier.padding(horizontal = 20.dp)
-                    )
-                }
+        } else {
+            val list = when (seg) {
+                LibrarySegment.Playlists -> playlists
+                LibrarySegment.Albums -> albums
+                LibrarySegment.Artists -> artists
+                LibrarySegment.Liked -> emptyList()
             }
-
-            if (selectedFilter == LibraryFilter.ALBUMS) {
-                items(SampleCatalog.albums, key = { it.id }) { album ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                            .clip(RoundedCornerShape(MillesRadius.Medium))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(color = colors.lime),
-                                onClick = { onOpenAlbum(album) }
-                            )
-                            .padding(vertical = 6.dp)
-                            .testTag("library_album_${album.id}"),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MillesAlbumArtwork(
-                            artwork = album.artwork,
-                            contentDescription = album.title,
-                            modifier = Modifier.size(62.dp),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = album.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = colors.textPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${album.artist} · ${album.year}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.textSecondary,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (selectedFilter == LibraryFilter.ARTISTS) {
-                items(SampleCatalog.artists, key = { it.id }) { artist ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                            .clip(RoundedCornerShape(MillesRadius.Medium))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(color = colors.lime),
-                                onClick = { onOpenArtist(artist) }
-                            )
-                            .padding(vertical = 6.dp)
-                            .testTag("library_artist_${artist.id}"),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MillesAlbumArtwork(
-                            artwork = artist.artwork,
-                            contentDescription = artist.name,
-                            modifier = Modifier.size(60.dp),
-                            shape = CircleShape
-                        )
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = artist.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = colors.textPrimary
-                            )
-                            Text(
-                                text = artist.genre,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.textSecondary
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (selectedFilter == LibraryFilter.LIKED_SONGS) {
-                items(favoriteTracks, key = { it.id }) { track ->
-                    TrackListRow(
-                        track = track,
-                        isCurrent = track.id == currentTrackId,
-                        isPlaying = isPlaying && track.id == currentTrackId,
-                        isFavorite = true,
-                        onPlay = { onPlayTrack(track) },
-                        onToggleFavorite = { onToggleFavorite(track.id) },
-                        onOpenOptions = { onOpenTrackOptions(track) },
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
+            items(list, key = { it.id }) { collection ->
+                CollectionRow(collection, round = seg == LibrarySegment.Artists) {
+                    onCollection(collection, seg)
                 }
             }
         }
@@ -270,66 +134,56 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun LibraryPlaylistRow(
-    playlist: Playlist,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+private fun ActionPill(
+    text: String,
+    icon: ImageVector,
+    primary: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit
 ) {
-    val colors = MillesTheme.colors
+    val palette = LocalMillesPalette.current
+    val unselectedBg = if (palette.isDark) Color(0x1FFFFFFF) else palette.surfaceHigh
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(MillesRadius.Medium))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(color = colors.lime),
-                onClick = onClick
-            )
-            .padding(vertical = 4.dp)
-            .testTag("library_playlist_${playlist.id}"),
+        modifier
+            .height(48.dp)
+            .clip(CircleShape)
+            .background(if (primary) Milles.Lime else unselectedBg)
+            .clickable(onClick = onClick),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        MillesAlbumArtwork(
-            artwork = playlist.artwork,
-            contentDescription = playlist.title,
-            modifier = Modifier.size(62.dp),
-            shape = RoundedCornerShape(14.dp)
-        )
-        Spacer(modifier = Modifier.width(14.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Text(
-                text = playlist.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "${playlist.displayedSongCount} songs",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary
-            )
-        }
-        Box(
+        Icon(icon, contentDescription = null, tint = if (primary) Color.Black else palette.textPrimary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, fontWeight = FontWeight.SemiBold, color = if (primary) Color.Black else palette.textPrimary)
+    }
+}
+
+@Composable
+private fun CollectionRow(c: Collection, round: Boolean, onClick: () -> Unit) {
+    val palette = LocalMillesPalette.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .testTag("collection_row_${c.id}"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = c.coverUrl,
+            contentDescription = c.title,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = ripple(),
-                    onClick = onClick
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.MoreVert,
-                contentDescription = stringResource(R.string.cd_more_options),
-                tint = colors.textSecondary,
-                modifier = Modifier.size(20.dp)
-            )
+                .size(60.dp)
+                .clip(if (round) CircleShape else RoundedCornerShape(14.dp))
+                .background(palette.surfaceHigh)
+        )
+        Spacer(Modifier.width(14.dp))
+        Column {
+            Text(c.title, style = MaterialTheme.typography.titleMedium, color = palette.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (c.subtitle.isNotBlank()) {
+                Text(c.subtitle, style = MaterialTheme.typography.bodyMedium, color = palette.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

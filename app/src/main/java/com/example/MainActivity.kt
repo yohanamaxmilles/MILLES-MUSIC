@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val systemDark = isSystemInDarkTheme()
             val isDark = when {
-                uiState.isSplashVisible || uiState.isNowPlayingOpen -> true
+                uiState.isNowPlayingOpen -> true
                 uiState.themeMode == ThemeMode.DARK -> true
                 uiState.themeMode == ThemeMode.LIGHT -> false
                 else -> systemDark

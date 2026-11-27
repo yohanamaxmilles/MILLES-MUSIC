@@ -1,329 +1,170 @@
 package com.example.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.outlined.MusicOff
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.example.R
-import com.example.model.Album
-import com.example.model.Artist
-import com.example.model.ArtworkDescriptor
-import com.example.model.SampleCatalog
-import com.example.model.Track
-import com.example.ui.components.MillesAlbumArtwork
-import com.example.ui.components.MillesPillChip
-import com.example.ui.components.MillesSearchInput
-import com.example.ui.components.MillesTopDetailBar
-import com.example.ui.theme.MillesRadius
-import com.example.ui.theme.MillesTheme
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.ui.Collection
+import com.example.ui.Track
+import com.example.ui.components.ScreenTitle
+import com.example.ui.components.SectionHeader
+import com.example.ui.components.TrackRow
+import com.example.ui.theme.LocalMillesPalette
+import com.example.ui.theme.Milles
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     query: String,
-    recentSearches: List<String>,
-    onQueryChange: (String) -> Unit,
-    onSubmitQuery: (String) -> Unit,
-    onBack: () -> Unit,
-    onPlayTrack: (Track) -> Unit,
-    onOpenArtist: (Artist) -> Unit,
-    onOpenAlbum: (Album) -> Unit,
-    bottomContentPadding: Dp,
-    modifier: Modifier = Modifier
+    onQuery: (String) -> Unit,
+    results: List<Track>,
+    genres: List<Collection>,
+    activeTrackId: String,
+    onTrack: (Track) -> Unit,
+    onMoreTrack: (Track) -> Unit,
+    onGenre: (Collection) -> Unit,
+    bottomInset: Dp = 184.dp
 ) {
-    BackHandler(onBack = onBack)
-    val colors = MillesTheme.colors
-    val trimmed = query.trim()
+    val palette = LocalMillesPalette.current
+    val fill = if (palette.isDark) Color(0x24FFFFFF) else palette.surfaceHigh
 
-    val matchedArtists = remember(trimmed) {
-        if (trimmed.isEmpty()) emptyList()
-        else SampleCatalog.artists.filter {
-            it.name.contains(trimmed, ignoreCase = true) ||
-                it.genre.contains(trimmed, ignoreCase = true)
-        }
-    }
-
-    val matchedTracks = remember(trimmed) {
-        if (trimmed.isEmpty()) emptyList()
-        else SampleCatalog.tracks.filter {
-            it.title.contains(trimmed, ignoreCase = true) ||
-                it.artist.contains(trimmed, ignoreCase = true) ||
-                it.genre.contains(trimmed, ignoreCase = true) ||
-                it.album.contains(trimmed, ignoreCase = true)
-        }
-    }
-
-    val matchedAlbums = remember(trimmed) {
-        if (trimmed.isEmpty()) emptyList()
-        else SampleCatalog.albums.filter {
-            it.title.contains(trimmed, ignoreCase = true) ||
-                it.artist.contains(trimmed, ignoreCase = true)
-        }
-    }
-
-    Box(
-        modifier = modifier
+    LazyColumn(
+        Modifier
             .fillMaxSize()
-            .background(colors.backgroundMain)
+            .background(palette.background)
             .testTag("search_screen"),
-        contentAlignment = Alignment.TopCenter
+        contentPadding = PaddingValues(bottom = bottomInset)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .widthIn(max = 760.dp)
-        ) {
-            MillesTopDetailBar(
-                title = stringResource(R.string.title_search),
-                onBack = onBack
-            )
-
-            MillesSearchInput(
-                query = query,
-                onQueryChange = onQueryChange,
-                onSubmit = { onSubmitQuery(query) },
-                placeholder = stringResource(R.string.search_placeholder),
-                modifier = Modifier.padding(horizontal = 20.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (trimmed.isEmpty()) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 20.dp,
-                        end = 20.dp,
-                        bottom = bottomContentPadding
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
-                ) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.search_recent),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = colors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            recentSearches.forEach { term ->
-                                MillesPillChip(
-                                    label = term,
-                                    selected = false,
-                                    onClick = { onQueryChange(term) },
-                                    modifier = Modifier.testTag("recent_search_$term")
-                                )
-                            }
+        item { ScreenTitle("Search") }
+        item {
+            TextField(
+                value = query,
+                onValueChange = onQuery,
+                singleLine = true,
+                shape = CircleShape,
+                placeholder = { Text("Artists, songs, albums", color = palette.textSecondary) },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = palette.textSecondary) },
+                trailingIcon = if (query.isNotEmpty()) {
+                    {
+                        IconButton(onClick = { onQuery("") }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Clear search", tint = palette.textSecondary)
                         }
                     }
-
-                    item {
-                        Text(
-                            text = "Trending Right Now",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = colors.textPrimary
-                        )
-                    }
-
-                    items(SampleCatalog.tracks.filter { it.isTrending }, key = { it.id }) { track ->
-                        SearchResultRow(
-                            title = track.title,
-                            subtitle = "Song · ${track.artist}",
-                            artwork = track.artwork,
-                            artworkShape = RoundedCornerShape(12.dp),
-                            onClick = { onPlayTrack(track) },
-                            testTag = "search_trending_${track.id}"
-                        )
-                    }
-                }
-            } else if (matchedArtists.isEmpty() && matchedTracks.isEmpty() && matchedAlbums.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
+                } else null,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = fill,
+                    unfocusedContainerColor = fill,
+                    focusedTextColor = palette.textPrimary,
+                    unfocusedTextColor = palette.textPrimary,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = Milles.Lime
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .testTag("search_input")
+            )
+            Spacer(Modifier.height(20.dp))
+        }
+        if (query.isBlank()) {
+            item {
+                SectionHeader("Browse all")
+                Spacer(Modifier.height(12.dp))
+            }
+            items(genres.chunked(2)) { pair ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(colors.surface),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.MusicOff,
-                                contentDescription = null,
-                                tint = colors.lavender,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.search_empty_title),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = colors.textPrimary
-                        )
-                        Text(
-                            text = stringResource(R.string.search_empty_subtitle),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.textSecondary
-                        )
+                    pair.forEach { genre ->
+                        GenreTile(genre, Modifier.weight(1f)) { onGenre(genre) }
                     }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 20.dp,
-                        end = 20.dp,
-                        bottom = bottomContentPadding
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(matchedArtists, key = { "art_${it.id}" }) { artist ->
-                        SearchResultRow(
-                            title = artist.name,
-                            subtitle = "Artist",
-                            artwork = artist.artwork,
-                            artworkShape = CircleShape,
-                            onClick = { onOpenArtist(artist) },
-                            testTag = "search_result_${artist.id}"
-                        )
-                    }
-                    items(matchedTracks, key = { "trk_${it.id}" }) { track ->
-                        SearchResultRow(
-                            title = track.title,
-                            subtitle = "Song · ${track.artist}",
-                            artwork = track.artwork,
-                            artworkShape = RoundedCornerShape(12.dp),
-                            onClick = { onPlayTrack(track) },
-                            testTag = "search_result_${track.id}"
-                        )
-                    }
-                    items(matchedAlbums, key = { "alb_${it.id}" }) { album ->
-                        SearchResultRow(
-                            title = album.title,
-                            subtitle = "Album · ${album.artist}",
-                            artwork = album.artwork,
-                            artworkShape = RoundedCornerShape(12.dp),
-                            onClick = { onOpenAlbum(album) },
-                            testTag = "search_result_${album.id}"
-                        )
-                    }
-                }
+            }
+        } else if (results.isEmpty()) {
+            item {
+                Text(
+                    "No results for \"$query\"",
+                    Modifier.padding(20.dp),
+                    color = palette.textSecondary
+                )
+            }
+        } else {
+            items(results, key = { it.id }) { track ->
+                TrackRow(
+                    track = track,
+                    active = track.id == activeTrackId,
+                    onMore = { onMoreTrack(track) },
+                    onClick = { onTrack(track) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SearchResultRow(
-    title: String,
-    subtitle: String,
-    artwork: ArtworkDescriptor,
-    artworkShape: Shape,
-    onClick: () -> Unit,
-    testTag: String
-) {
-    val colors = MillesTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(MillesRadius.Medium))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(color = colors.lime),
-                onClick = onClick
-            )
-            .padding(vertical = 6.dp, horizontal = 4.dp)
-            .testTag(testTag),
-        verticalAlignment = Alignment.CenterVertically
+private fun GenreTile(g: Collection, modifier: Modifier, onClick: () -> Unit) {
+    val palette = LocalMillesPalette.current
+    Box(
+        modifier
+            .aspectRatio(1.5f)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .testTag("genre_tile_${g.id}")
     ) {
-        MillesAlbumArtwork(
-            artwork = artwork,
-            contentDescription = title,
-            modifier = Modifier.size(54.dp),
-            shape = artworkShape
+        AsyncImage(
+            model = g.coverUrl,
+            contentDescription = g.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().background(palette.surfaceHigh)
         )
-        Spacer(modifier = Modifier.width(14.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Spacer(modifier = Modifier.width(10.dp))
         Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(colors.surface)
-                .border(1.dp, colors.divider, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.PlayArrow,
-                contentDescription = stringResource(R.string.cd_play),
-                tint = colors.textPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
+            Modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
+        )
+        Text(
+            g.title,
+            Modifier.align(Alignment.BottomStart).padding(14.dp),
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            color = Color.White
+        )
     }
 }

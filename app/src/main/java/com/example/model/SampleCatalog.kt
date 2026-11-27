@@ -2,6 +2,7 @@ package com.example.model
 
 import androidx.compose.ui.graphics.Color
 import com.example.R
+import com.example.ui.LyricLine
 
 object SampleCatalog {
 
@@ -16,24 +17,25 @@ object SampleCatalog {
         imageRes = R.drawable.img_cover_midnight,
         primaryColor = Color(0xFF242B1E),
         secondaryColor = Color(0xFF151611),
-        accentColor = Color(0xFFC6ED65)
+        accentColor = Color(0xFFC6F24E)
     )
 
     private val artChill = ArtworkDescriptor(
         imageRes = R.drawable.img_cover_chill,
         primaryColor = Color(0xFF273454),
         secondaryColor = Color(0xFF141824),
-        accentColor = Color(0xFFB9A5F2)
+        accentColor = Color(0xFF8B6CF0)
     )
 
     private val artHero = ArtworkDescriptor(
         imageRes = R.drawable.img_hero_music,
         primaryColor = Color(0xFF313525),
         secondaryColor = Color(0xFF151611),
-        accentColor = Color(0xFFC6ED65)
+        accentColor = Color(0xFFC6F24E)
     )
 
     private val artElectronic = ArtworkDescriptor(
+        imageRes = R.drawable.img_cover_chill,
         primaryColor = Color(0xFF182A44),
         secondaryColor = Color(0xFF0E131D),
         accentColor = Color(0xFF64B5F6),
@@ -41,6 +43,7 @@ object SampleCatalog {
     )
 
     private val artRock = ArtworkDescriptor(
+        imageRes = R.drawable.img_cover_midnight,
         primaryColor = Color(0xFF3E4428),
         secondaryColor = Color(0xFF191C12),
         accentColor = Color(0xFFD8E479),
@@ -48,13 +51,15 @@ object SampleCatalog {
     )
 
     private val artRnB = ArtworkDescriptor(
+        imageRes = R.drawable.img_hero_music,
         primaryColor = Color(0xFF472F5C),
         secondaryColor = Color(0xFF1C1426),
-        accentColor = Color(0xFFB9A5F2),
+        accentColor = Color(0xFF8B6CF0),
         patternVariant = 3
     )
 
     private val artLoFi = ArtworkDescriptor(
+        imageRes = R.drawable.img_cover_chill,
         primaryColor = Color(0xFF293836),
         secondaryColor = Color(0xFF141B1A),
         accentColor = Color(0xFF9ED4C8),
@@ -62,13 +67,15 @@ object SampleCatalog {
     )
 
     private val artWorkout = ArtworkDescriptor(
+        imageRes = R.drawable.img_cover_afro,
         primaryColor = Color(0xFF2E3C2B),
         secondaryColor = Color(0xFF131912),
-        accentColor = Color(0xFFA9D94D),
+        accentColor = Color(0xFFA8D83A),
         patternVariant = 5
     )
 
     private val artSoul = ArtworkDescriptor(
+        imageRes = R.drawable.img_cover_afro,
         primaryColor = Color(0xFF5A372B),
         secondaryColor = Color(0xFF1F1411),
         accentColor = Color(0xFFE5987E),
@@ -360,7 +367,7 @@ object SampleCatalog {
         Playlist(
             id = "pl_my_favorites",
             title = "My Favorites",
-            subtitle = "Curated by you",
+            subtitle = "Curated by you · 245 songs",
             trackIds = listOf("trk_nakujoa", "trk_velvet_horizon", "trk_neon_rain", "trk_amber_tide", "trk_solar_drift"),
             artwork = artAfro,
             displayedSongCount = 245,
@@ -369,7 +376,7 @@ object SampleCatalog {
         Playlist(
             id = "pl_lib_chill",
             title = "Chill Vibes",
-            subtitle = "Evening calm",
+            subtitle = "Evening calm · 120 songs",
             trackIds = listOf("trk_velvet_horizon", "trk_lavender_mist", "trk_analog_sky"),
             artwork = artChill,
             displayedSongCount = 120,
@@ -378,7 +385,7 @@ object SampleCatalog {
         Playlist(
             id = "pl_lib_afrobeats",
             title = "Afrobeats Hits",
-            subtitle = "Pure energy",
+            subtitle = "Pure energy · 180 songs",
             trackIds = listOf("trk_nakujoa", "trk_diamond", "trk_diamond_girl"),
             artwork = artAfro,
             displayedSongCount = 180,
@@ -387,7 +394,7 @@ object SampleCatalog {
         Playlist(
             id = "pl_lib_workout",
             title = "Workout Mix",
-            subtitle = "High tempo",
+            subtitle = "High tempo · 95 songs",
             trackIds = listOf("trk_chrome_echo", "trk_neon_rain", "trk_solar_drift"),
             artwork = artWorkout,
             displayedSongCount = 95,
@@ -448,12 +455,24 @@ object SampleCatalog {
         "trk_solar_drift"
     )
 
-    val recentSearches: List<String> = listOf(
-        "Diamond",
-        "Afrobeats",
-        "Kaytranada",
-        "Chill Vibes"
+    private val sampleLyricsByTrackId: Map<String, List<LyricLine>> = mapOf(
+        "trk_nakujoa" to listOf(
+            LyricLine(0L, "City lights hum low across the bay"),
+            LyricLine(14_000L, "Bassline heavy till the break of day"),
+            LyricLine(28_000L, "Every step feels lighter in the sound"),
+            LyricLine(42_000L, "Lime and midnight spinning all around"),
+            LyricLine(58_000L, "Turn the rhythm up and let it breathe"),
+            LyricLine(76_000L, "Everything we wanted underneath")
+        ),
+        "trk_velvet_horizon" to listOf(
+            LyricLine(0L, "Shadows stretching out on quiet glass"),
+            LyricLine(18_000L, "Hold the moment while the colors pass"),
+            LyricLine(36_000L, "Warm reverb echoing across the room"),
+            LyricLine(54_000L, "Soft lavender rising in the gloom")
+        )
     )
+
+    fun lyricsForTrack(trackId: String): List<LyricLine> = sampleLyricsByTrackId[trackId].orEmpty()
 
     fun trackById(id: String): Track? = tracks.find { it.id == id }
     fun tracksByIds(ids: List<String>): List<Track> = ids.mapNotNull(::trackById)

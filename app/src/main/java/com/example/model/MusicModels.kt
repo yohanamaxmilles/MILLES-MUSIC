@@ -4,14 +4,6 @@ import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
-enum class MainTab {
-    HOME,
-    EXPLORE,
-    LIBRARY,
-    FAVORITES,
-    PROFILE
-}
-
 enum class ThemeMode(val label: String) {
     DARK("Dark"),
     LIGHT("Light"),
@@ -30,33 +22,12 @@ enum class RepeatMode {
     ONE
 }
 
-enum class ExploreFilter(val label: String) {
-    GENRES("Genres"),
-    ARTISTS("Artists"),
-    TRENDING("Trending"),
-    NEW_RELEASES("New Releases")
-}
-
-enum class LibraryFilter(val label: String) {
-    PLAYLISTS("Playlists"),
-    ALBUMS("Albums"),
-    ARTISTS("Artists"),
-    LIKED_SONGS("Liked Songs")
-}
-
-enum class FavoritesFilter(val label: String) {
-    ALL("All"),
-    SONGS("Songs"),
-    RECENT("Recently Liked"),
-    HIGH_ENERGY("Upbeat")
-}
-
 @Immutable
 data class ArtworkDescriptor(
     @DrawableRes val imageRes: Int? = null,
     val primaryColor: Color = Color(0xFF2B2D24),
     val secondaryColor: Color = Color(0xFF171813),
-    val accentColor: Color = Color(0xFFC6ED65),
+    val accentColor: Color = Color(0xFFC6F24E),
     val patternVariant: Int = 0
 )
 
@@ -117,7 +88,7 @@ data class GenreCategory(
 )
 
 sealed interface SecondaryDestination {
-    data object Search : SecondaryDestination
+    data object Profile : SecondaryDestination
     data object ThemeSettings : SecondaryDestination
     data class PlaylistDetail(val playlistId: String) : SecondaryDestination
     data class GenreDetail(val genreId: String) : SecondaryDestination

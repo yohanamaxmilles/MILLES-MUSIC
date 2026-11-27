@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,21 +16,22 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,30 +39,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.ThemeMode
-import com.example.ui.components.MillesSilkWavesBackdrop
-import com.example.ui.components.MillesSurfaceCard
-import com.example.ui.components.MillesToggleSwitch
-import com.example.ui.components.MillesTopDetailBar
-import com.example.ui.components.MillesWaveLogoM
-import com.example.ui.theme.DarkBackgroundMain
-import com.example.ui.theme.DarkDivider
-import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.LavenderPrimary
-import com.example.ui.theme.LightBackgroundMain
-import com.example.ui.theme.LightDivider
-import com.example.ui.theme.LightSurface
-import com.example.ui.theme.LimePrimary
-import com.example.ui.theme.MillesRadius
-import com.example.ui.theme.MillesTheme
-import com.example.ui.theme.OnLimeInk
+import com.example.ui.components.GlassIconButton
+import com.example.ui.theme.LocalMillesPalette
+import com.example.ui.theme.Milles
 
 @Composable
 fun ThemeScreen(
@@ -73,7 +56,7 @@ fun ThemeScreen(
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBack)
-    val colors = MillesTheme.colors
+    val palette = LocalMillesPalette.current
     val systemDark = isSystemInDarkTheme()
     val effectiveDark = when (themeMode) {
         ThemeMode.DARK -> true
@@ -81,148 +64,110 @@ fun ThemeScreen(
         ThemeMode.AUTO -> systemDark
     }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.backgroundMain)
+            .background(palette.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 32.dp)
             .testTag("theme_screen"),
-        contentAlignment = Alignment.TopCenter
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        MillesSilkWavesBackdrop(
-            modifier = Modifier.fillMaxSize(),
-            showTopWave = false,
-            showBottomWave = true,
-            intensity = 0.7f
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .widthIn(max = 680.dp)
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.SpaceBetween
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                MillesTopDetailBar(
-                    title = stringResource(R.string.menu_theme),
-                    onBack = onBack
-                )
+            GlassIconButton(
+                icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                description = stringResource(R.string.cd_back),
+                tint = palette.textPrimary,
+                onClick = onBack
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = stringResource(R.string.menu_theme),
+                style = MaterialTheme.typography.headlineSmall,
+                color = palette.textPrimary
+            )
+        }
 
-                Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            ThemePreviewCard(
+                title = stringResource(R.string.theme_dark_mode),
+                isDarkPreview = true,
+                selected = effectiveDark,
+                onClick = { onSelectThemeMode(ThemeMode.DARK) },
+                modifier = Modifier.weight(1f).testTag("theme_card_dark")
+            )
+            ThemePreviewCard(
+                title = stringResource(R.string.theme_light_mode),
+                isDarkPreview = false,
+                selected = !effectiveDark,
+                onClick = { onSelectThemeMode(ThemeMode.LIGHT) },
+                modifier = Modifier.weight(1f).testTag("theme_card_light")
+            )
+        }
 
-                // Side-by-side Dark Mode and Light Mode live miniature preview cards
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    ThemePreviewPhoneCard(
-                        title = stringResource(R.string.theme_dark_mode),
-                        isDarkPreview = true,
-                        selected = effectiveDark,
-                        onClick = { onSelectThemeMode(ThemeMode.DARK) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("theme_card_dark")
-                    )
-
-                    ThemePreviewPhoneCard(
-                        title = stringResource(R.string.theme_light_mode),
-                        isDarkPreview = false,
-                        selected = !effectiveDark,
-                        onClick = { onSelectThemeMode(ThemeMode.LIGHT) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("theme_card_light")
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Dynamic Theme (Follow system theme) toggle card
-                MillesSurfaceCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    backgroundColor = colors.surface,
-                    cornerRadius = MillesRadius.Large
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(3.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.theme_dynamic_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = colors.textPrimary
-                            )
-                            Text(
-                                text = stringResource(R.string.theme_dynamic_subtitle),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.textSecondary
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        MillesToggleSwitch(
-                            checked = themeMode == ThemeMode.AUTO,
-                            onCheckedChange = onToggleDynamicTheme,
-                            modifier = Modifier.testTag("theme_dynamic_switch")
-                        )
-                    }
-                }
-            }
-
-            // Bottom Brand Signature Footer
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 36.dp, bottom = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MillesWaveLogoM(modifier = Modifier.size(46.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(palette.surface)
+                .border(1.dp, palette.stroke, RoundedCornerShape(24.dp))
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = colors.textPrimary, fontWeight = FontWeight.ExtraBold)) {
-                            append("MILLES ")
-                        }
-                        withStyle(SpanStyle(color = LimePrimary, fontWeight = FontWeight.Bold)) {
-                            append("MUSIC")
-                        }
-                    },
-                    style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 1.4.sp)
+                    text = stringResource(R.string.theme_dynamic_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.textPrimary
                 )
                 Text(
-                    text = stringResource(R.string.tagline),
+                    text = stringResource(R.string.theme_dynamic_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary
+                    color = palette.textSecondary
                 )
             }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = themeMode == ThemeMode.AUTO,
+                onCheckedChange = onToggleDynamicTheme,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.Black,
+                    checkedTrackColor = Milles.Lime,
+                    uncheckedThumbColor = palette.textPrimary,
+                    uncheckedTrackColor = palette.surfaceHigh
+                ),
+                modifier = Modifier.testTag("theme_dynamic_switch")
+            )
         }
     }
 }
 
 @Composable
-private fun ThemePreviewPhoneCard(
+private fun ThemePreviewCard(
     title: String,
     isDarkPreview: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = MillesTheme.colors
-    val cardBg = if (isDarkPreview) DarkBackgroundMain else LightBackgroundMain
-    val cardSurface = if (isDarkPreview) DarkSurface else LightSurface
-    val cardBorder = if (selected) LimePrimary else if (isDarkPreview) DarkDivider else LightDivider
+    val palette = LocalMillesPalette.current
+    val cardBg = if (isDarkPreview) Milles.Black else Color(0xFFF7F7F5)
+    val cardSurface = if (isDarkPreview) Milles.SurfaceHigh else Color(0xFFFFFFFF)
+    val borderColor = if (selected) Milles.Lime else palette.stroke
 
     Column(
         modifier = modifier,
@@ -232,127 +177,70 @@ private fun ThemePreviewPhoneCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(242.dp)
-                .clip(RoundedCornerShape(22.dp))
+                .height(220.dp)
+                .clip(RoundedCornerShape(24.dp))
                 .background(cardBg)
-                .border(
-                    width = if (selected) 2.dp else 1.dp,
-                    color = cardBorder,
-                    shape = RoundedCornerShape(22.dp)
-                )
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = ripple(color = LimePrimary),
-                    onClick = onClick
-                )
+                .border(if (selected) 2.dp else 1.dp, borderColor, RoundedCornerShape(24.dp))
+                .clickable(onClick = onClick)
                 .padding(12.dp)
         ) {
-            // Subtle atmospheric aura inside the miniature preview card
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                LavenderPrimary.copy(alpha = if (isDarkPreview) 0.28f else 0.18f),
-                                LimePrimary.copy(alpha = if (isDarkPreview) 0.18f else 0.22f),
+                                Milles.Violet.copy(alpha = 0.22f),
+                                Milles.Lime.copy(alpha = 0.16f),
                                 cardBg
                             )
                         )
                     )
             )
-
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(8.dp),
+                modifier = Modifier.fillMaxSize().padding(10.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Miniature top bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MillesWaveLogoM(modifier = Modifier.size(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(cardSurface)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(LavenderPrimary.copy(alpha = 0.7f))
-                        )
-                    }
-                }
-
-                // Miniature hero artwork block
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(104.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(cardSurface.copy(alpha = 0.75f))
+                        .background(cardSurface.copy(alpha = 0.85f))
                         .padding(10.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .width(56.dp)
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(if (isDarkPreview) Color(0xFFF7F7F2) else Color(0xFF171813))
-                    )
-                    Box(
-                        modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .size(22.dp)
+                            .size(24.dp)
                             .clip(CircleShape)
-                            .background(LimePrimary),
+                            .background(Milles.Lime),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = null,
-                            tint = OnLimeInk,
-                            modifier = Modifier.size(13.dp)
-                        )
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
                     }
                 }
-
-                // Miniature bottom checkmark or subtle dot
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
-                        .size(26.dp)
+                        .size(28.dp)
                         .clip(CircleShape)
-                        .background(if (selected) LimePrimary else cardSurface),
+                        .background(if (selected) Milles.Lime else cardSurface),
                     contentAlignment = Alignment.Center
                 ) {
                     if (selected) {
-                        Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = title,
-                            tint = OnLimeInk,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.Rounded.Check, contentDescription = title, tint = Color.Black, modifier = Modifier.size(16.dp))
                     }
                 }
             }
         }
-
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
             ),
-            color = if (selected) colors.textPrimary else colors.textSecondary
+            color = if (selected) palette.textPrimary else palette.textSecondary
         )
     }
 }

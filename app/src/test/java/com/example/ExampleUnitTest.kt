@@ -1,9 +1,11 @@
 package com.example
 
-import com.example.model.MainTab
 import com.example.model.ThemeMode
 import com.example.state.MillesMusicViewModel
 import com.example.state.formatDuration
+import com.example.state.toPlayerUiState
+import com.example.ui.components.MillesTab
+import com.example.ui.formatTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -31,16 +33,19 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun `formatDuration formats seconds into mm ss`() {
+    fun `formatDuration and formatTime format correctly`() {
         assertEquals("00:45", formatDuration(45))
         assertEquals("03:52", formatDuration(232))
+        assertEquals("00:45", formatTime(45_000L))
     }
 
     @Test
-    fun `view model handles tabs, playlist creation, theme switching, and playback`() {
+    fun `view model maps to PlayerUiState and supports 4 MillesTab destinations`() {
         val vm = MillesMusicViewModel()
-        vm.selectTab(MainTab.LIBRARY)
-        assertEquals(MainTab.LIBRARY, vm.uiState.value.activeTab)
+        assertEquals(4, MillesTab.entries.size)
+
+        vm.selectTab(MillesTab.Library)
+        assertEquals(MillesTab.Library, vm.uiState.value.activeTab)
 
         val initialCount = vm.uiState.value.userPlaylists.size
         vm.createPlaylist("Midnight Groove", "Late night drive")
@@ -52,5 +57,9 @@ class ExampleUnitTest {
 
         vm.togglePlayPause()
         assertTrue(vm.uiState.value.isPlaying)
+
+        val playerUiState = vm.uiState.value.toPlayerUiState()
+        assertTrue(playerUiState.isPlaying)
+        assertEquals(vm.uiState.value.currentTrack.id, playerUiState.track.id)
     }
 }
