@@ -17,6 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.media3.session.MediaController
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -58,6 +61,20 @@ fun MillesMusicApp(
     viewModel: MillesMusicViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    DisposableEffect(viewModel, context) {
+        val future = com.example.playback.MillesPlaybackConnector.connect(context)
+        future.addListener({
+            runCatching { future.get() }
+                .onSuccess(viewModel::attachPlaybackController)
+                .onFailure { viewModel.showStatusBanner("Unable to connect to audio player") }
+        }, context.mainExecutor)
+        onDispose {
+            viewModel.detachPlaybackController()
+            MediaController.releaseFuture(future)
+        }
+    }
 
     MillesTheme(themeMode = uiState.themeMode) {
         val palette = LocalMillesPalette.current
@@ -349,16 +366,7 @@ private fun TabContent(
 
         MillesTab.Search -> {
             val query = uiState.searchQuery
-            val results = remember(query) {
-                val q = query.trim()
-                if (q.isEmpty()) emptyList()
-                else SampleCatalog.tracks.filter {
-                    it.title.contains(q, ignoreCase = true) ||
-                        it.artist.contains(q, ignoreCase = true) ||
-                        it.album.contains(q, ignoreCase = true) ||
-                        it.genre.contains(q, ignoreCase = true)
-                }.map { it.toUiTrack() }
-            }
+            val results = uiState.searchResults.map { it.toUiTrack() }
             val genreCols = remember { SampleCatalog.genres.map { it.toUiCollection() } }
 
             SearchScreen(
@@ -368,16 +376,26 @@ private fun TabContent(
                 genres = genreCols,
                 activeTrackId = uiState.currentTrack.id,
                 onTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
-                        viewModel.playTrack(track, source = "Search")
+                    if (uiTrack.id.startsWith("jamendo_")) {
+                        viewModel.playSearchResult(uiTrack.id)
+                    } else {
+                        SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                            viewModel.playTrack(track, source = "Search")
+                        }
                     }
                 },
                 onMoreTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                    if (uiTrack.id.startsWith("jamendo_")) {
+                        viewModel.openSearchResultOptions(uiTrack.id)
+                    } else {
+                        SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                    }
                 },
                 onGenre = { genreCol ->
                     viewModel.navigateTo(SecondaryDestination.GenreDetail(genreCol.id))
                 },
+                isSearching = uiState.isSearching,
+                errorMessage = uiState.searchError,
                 bottomInset = bottomInset
             )
         }

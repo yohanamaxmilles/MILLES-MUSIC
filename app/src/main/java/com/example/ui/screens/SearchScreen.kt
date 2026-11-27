@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -55,8 +57,11 @@ fun SearchScreen(
     onTrack: (Track) -> Unit,
     onMoreTrack: (Track) -> Unit,
     onGenre: (Collection) -> Unit,
+    isSearching: Boolean = false,
+    errorMessage: String? = null,
     bottomInset: Dp = 184.dp
 ) {
+    val uriHandler = LocalUriHandler.current
     val palette = LocalMillesPalette.current
     val fill = if (palette.isDark) Color(0x24FFFFFF) else palette.surfaceHigh
 
@@ -120,19 +125,49 @@ fun SearchScreen(
         } else if (results.isEmpty()) {
             item {
                 Text(
-                    "No results for \"$query\"",
+                    when {
+                        isSearching -> "Searching Jamendo catalogue…"
+                        errorMessage != null -> errorMessage
+                        else -> "No results for \"$query\""
+                    },
                     Modifier.padding(20.dp),
                     color = palette.textSecondary
                 )
             }
         } else {
             items(results, key = { it.id }) { track ->
-                TrackRow(
-                    track = track,
-                    active = track.id == activeTrackId,
-                    onMore = { onMoreTrack(track) },
-                    onClick = { onTrack(track) }
-                )
+                Column {
+                    TrackRow(
+                        track = track,
+                        active = track.id == activeTrackId,
+                        onMore = { onMoreTrack(track) },
+                        onClick = { onTrack(track) }
+                    )
+                    if (track.providerName != null) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 76.dp, end = 20.dp, bottom = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Text("Provided by Jamendo", color = palette.textSecondary, fontSize = 11.sp)
+                            track.providerTrackUrl?.let { url ->
+                                Text(
+                                    "Track page",
+                                    Modifier.clickable { runCatching { uriHandler.openUri(url) } },
+                                    color = Milles.Lime,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            track.licenseUrl?.let { url ->
+                                Text(
+                                    "License",
+                                    Modifier.clickable { runCatching { uriHandler.openUri(url) } },
+                                    color = palette.textSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
