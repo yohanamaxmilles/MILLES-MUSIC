@@ -2,31 +2,29 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Official MILLES MUSIC Brand Colors
-val LimePrimary = Color(0xFFC6ED65)
-val LimeDarkAccent = Color(0xFFA9D94D)
+// MILLES MUSIC official brand identity. Keep these brand accents consistent.
+val LimePrimary = Color(0xFFC6F24E)
+val LimeDarkAccent = Color(0xFFA8D83A)
+val LavenderPrimary = Color(0xFF8B6CF0)
+val LavenderDarkAccent = Color(0xFF7556D8)
 
-val LavenderPrimary = Color(0xFFB9A5F2)
-val LavenderDarkAccent = Color(0xFF9D83E6)
+// Dark surfaces follow the Claude design specification.
+val DarkBackgroundMain = Color(0xFF050505)
+val DarkBackgroundSecondary = Color(0xFF0B0B0B)
+val DarkSurface = Color(0xFF101010)
+val DarkSurfaceElevated = Color(0xFF171717)
+val DarkTextPrimary = Color(0xFFF7F7F7)
+val DarkTextSecondary = Color(0xFFA3A3A3)
+val DarkDivider = Color(0xFF292929)
 
-// Dark Mode Palette
-val DarkBackgroundMain = Color(0xFF151611)
-val DarkBackgroundSecondary = Color(0xFF1B1C17)
-val DarkSurface = Color(0xFF20211C)
-val DarkSurfaceElevated = Color(0xFF272821)
-val DarkTextPrimary = Color(0xFFF7F7F2)
-val DarkTextSecondary = Color(0xFFA7A99F)
-val DarkDivider = Color(0xFF33352D)
-
-// Light Mode Palette
-val LightBackgroundMain = Color(0xFFF7F7F2)
+// Light mode keeps the same Lime + Lavender identity with neutral surfaces.
+val LightBackgroundMain = Color(0xFFF7F7F5)
 val LightBackgroundSecondary = Color(0xFFFFFFFF)
 val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceElevated = Color(0xFFF0F1E9)
-val LightTextPrimary = Color(0xFF171813)
-val LightTextSecondary = Color(0xFF74766D)
-val LightDivider = Color(0xFFE7E8DF)
+val LightSurfaceElevated = Color(0xFFEFEFED)
+val LightTextPrimary = Color(0xFF151515)
+val LightTextSecondary = Color(0xFF737373)
+val LightDivider = Color(0xFFE2E2E2)
 
-// Ink on Lime Green (always deep charcoal for high contrast)
-val OnLimeInk = Color(0xFF151611)
-val OnLavenderInk = Color(0xFF151611)
+val OnLimeInk = Color(0xFF050505)
+val OnLavenderInk = Color(0xFF050505)

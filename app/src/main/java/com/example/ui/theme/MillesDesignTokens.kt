@@ -39,7 +39,7 @@ val DarkMillesColors = MillesColorTokens(
     textPrimary = DarkTextPrimary,
     textSecondary = DarkTextSecondary,
     divider = DarkDivider,
-    scrimDark = Color(0xCC151611)
+    scrimDark = Color(0xCC050505)
 )
 
 val LightMillesColors = MillesColorTokens(
@@ -57,14 +57,14 @@ val LightMillesColors = MillesColorTokens(
     textPrimary = LightTextPrimary,
     textSecondary = LightTextSecondary,
     divider = LightDivider,
-    scrimDark = Color(0xB8171813)
+    scrimDark = Color(0xB8050505)
 )
 
 object MillesRadius {
-    val Small = 10.dp
-    val Medium = 16.dp
-    val Large = 22.dp
-    val Hero = 26.dp
+    val Small = 12.dp
+    val Medium = 22.dp
+    val Large = 28.dp
+    val Hero = 32.dp
     val Pill = 999.dp
 }
 

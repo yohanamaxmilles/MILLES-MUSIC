@@ -87,6 +87,8 @@ fun MillesMusicApp(
             ) {
                 NowPlayingScreen(
                     track = uiState.currentTrack,
+                    queue = uiState.queue,
+                    relatedTracks = SampleCatalog.tracks.filter { it.id != uiState.currentTrack.id }.take(8),
                     isPlaying = uiState.isPlaying,
                     progressSeconds = uiState.progressSeconds,
                     isFavorite = uiState.isCurrentTrackFavorite,
@@ -101,9 +103,9 @@ fun MillesMusicApp(
                     onToggleFavorite = { viewModel.toggleFavorite(uiState.currentTrack.id) },
                     onToggleShuffle = viewModel::toggleShuffle,
                     onCycleRepeat = viewModel::cycleRepeatMode,
-                    onOpenQueue = { viewModel.setQueueSheetOpen(true) },
                     onOpenAudioQuality = { viewModel.setAudioQualitySheetOpen(true) },
-                    onOpenTrackOptions = { viewModel.openTrackOptions(uiState.currentTrack) }
+                    onOpenTrackOptions = { viewModel.openTrackOptions(uiState.currentTrack) },
+                    onSelectTrack = { selected -> viewModel.playTrack(selected, openPlayer = true) }
                 )
             }
 

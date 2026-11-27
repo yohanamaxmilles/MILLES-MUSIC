@@ -44,7 +44,7 @@ import com.example.ui.theme.MillesTheme
 
 /**
  * Bespoke sculpted ribbon "M" brand mark of MILLES MUSIC:
- * Left arch in Lime Green (#C6ED65) interlocking with right arch in Lavender (#B9A5F2).
+ * Left arch in Lime Green (#C6F24E) interlocking with right arch in Lavender (#8B6CF0).
  */
 @Composable
 fun MillesWaveLogoM(
