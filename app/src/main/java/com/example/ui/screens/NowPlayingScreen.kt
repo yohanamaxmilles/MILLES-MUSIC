@@ -41,15 +41,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AudioQuality
 import com.example.model.RepeatMode
-import com.example.model.SampleCatalog
 import com.example.model.Track
 import com.example.state.formatDuration
 import com.example.ui.components.MillesAlbumArtwork
 import com.example.ui.components.MillesEqualizerBars
 import com.example.ui.components.MillesScrubberSlider
 import com.example.ui.theme.DarkBackgroundMain
-import com.example.ui.theme.DarkTextPrimary
-import com.example.ui.theme.DarkTextSecondary
 import com.example.ui.theme.LimePrimary
 import com.example.ui.theme.LavenderPrimary
 import com.example.ui.theme.OnLimeInk
