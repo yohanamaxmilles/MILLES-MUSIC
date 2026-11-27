@@ -2,6 +2,11 @@ package com.example.state
 
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import android.net.Uri
 import androidx.lifecycle.viewModelScope
 import com.example.model.Album
 import com.example.model.Artist
@@ -75,34 +80,87 @@ class MillesMusicViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(MillesUiState())
     val uiState: StateFlow<MillesUiState> = _uiState.asStateFlow()
 
-    init {
-        runPlaybackTicker()
-    }
+    private var playbackController: MediaController? = null
+    private var playerListener: Player.Listener? = null
 
-    private fun runPlaybackTicker() {
-        viewModelScope.launch {
-            while (true) {
-                delay(1000L)
-                val snapshot = _uiState.value
-                if (snapshot.isPlaying) {
-                    val nextSec = snapshot.progressSeconds + 1
-                    if (nextSec >= snapshot.currentTrack.durationSeconds) {
-                        advanceTrackOnCompletion()
-                    } else {
-                        _uiState.update { it.copy(progressSeconds = nextSec) }
-                    }
+    fun attachPlaybackController(controller: MediaController) {
+        detachPlaybackController()
+        playbackController = controller
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                _uiState.update { it.copy(isPlaying = isPlaying) }
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val track = mediaItem?.mediaId?.let { id ->
+                    _uiState.value.queue.firstOrNull { it.id == id }
+                        ?: SampleCatalog.trackById(id)
+                } ?: return
+                _uiState.update { it.copy(currentTrack = track, progressSeconds = 0) }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    _uiState.update { it.copy(isPlaying = false) }
                 }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                _uiState.update { it.copy(isPlaying = false) }
+                showStatusBanner("Playback error: ${error.errorCodeName}")
+            }
+        }
+        playerListener = listener
+        controller.addListener(listener)
+        syncPlayerState()
+        controller.shuffleModeEnabled = _uiState.value.isShuffleEnabled
+        controller.repeatMode = repeatModeToPlayer(_uiState.value.repeatMode)
+        viewModelScope.launch {
+            while (playbackController === controller) {
+                syncPlayerState()
+                delay(500L)
             }
         }
     }
 
-    private fun advanceTrackOnCompletion() {
-        val state = _uiState.value
-        if (state.repeatMode == RepeatMode.ONE) {
-            _uiState.update { it.copy(progressSeconds = 0, isPlaying = true) }
-            return
+    fun detachPlaybackController() {
+        val controller = playbackController ?: return
+        playerListener?.let(controller::removeListener)
+        playerListener = null
+        playbackController = null
+    }
+
+    private fun syncPlayerState() {
+        val player = playbackController ?: return
+        val duration = player.duration.takeIf { it > 0L } ?: 0L
+        _uiState.update { state ->
+            state.copy(
+                isPlaying = player.isPlaying,
+                progressSeconds = (player.currentPosition / 1000L).toInt()
+                    .coerceAtLeast(0)
+                    .let { if (duration > 0L) it.coerceAtMost((duration / 1000L).toInt()) else it }
+            )
         }
-        skipToNext(autoTriggered = true)
+    }
+
+    private fun repeatModeToPlayer(mode: RepeatMode): Int = when (mode) {
+        RepeatMode.OFF -> Player.REPEAT_MODE_OFF
+        RepeatMode.ALL -> Player.REPEAT_MODE_ALL
+        RepeatMode.ONE -> Player.REPEAT_MODE_ONE
+    }
+
+    private fun mediaItemFor(track: Track): MediaItem? {
+        val stream = track.streamUrl?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            ?: return null
+        val metadata = MediaMetadata.Builder()
+            .setTitle(track.title)
+            .setArtist(track.artist)
+            .build()
+        return MediaItem.Builder()
+            .setMediaId(track.id)
+            .setUri(Uri.parse(stream))
+            .setMediaMetadata(metadata)
+            .build()
     }
 
     fun selectTab(tab: MillesTab) {
@@ -170,7 +228,16 @@ class MillesMusicViewModel : ViewModel() {
     }
 
     fun togglePlayPause() {
-        _uiState.update { it.copy(isPlaying = !it.isPlaying) }
+        val player = playbackController
+        if (player == null) {
+            showStatusBanner("Connecting to the audio player")
+            return
+        }
+        if (player.isPlaying) player.pause() else {
+            if (player.currentMediaItem == null) {
+                showStatusBanner("Choose a track with an authorised audio stream")
+            } else player.play()
+        }
     }
 
     fun playTrack(
@@ -179,14 +246,33 @@ class MillesMusicViewModel : ViewModel() {
         source: String? = null,
         openPlayer: Boolean = false
     ) {
+        val newQueue = customQueue ?: if (_uiState.value.queue.any { it.id == track.id }) {
+            _uiState.value.queue
+        } else SampleCatalog.tracks
+        val controller = playbackController
+        val item = mediaItemFor(track)
+        if (controller != null) {
+            if (item == null) {
+                showStatusBanner("This catalogue entry has no authorised audio stream yet")
+                _uiState.update { it.copy(isNowPlayingOpen = openPlayer || it.isNowPlayingOpen) }
+                return
+            }
+            val playableItems = newQueue.mapNotNull(::mediaItemFor)
+            val startIndex = playableItems.indexOfFirst { it.mediaId == track.id }.coerceAtLeast(0)
+            controller.setMediaItems(playableItems, startIndex, 0L)
+            controller.prepare()
+            controller.play()
+        } else {
+            showStatusBanner("Audio player is not connected yet")
+            return
+        }
         _uiState.update { state ->
-            val newQueue = customQueue ?: if (state.queue.any { it.id == track.id }) state.queue else SampleCatalog.tracks
             state.copy(
                 currentTrack = track,
                 queue = newQueue,
                 playbackSource = source ?: track.album,
                 isPlaying = true,
-                progressSeconds = if (state.currentTrack.id == track.id) state.progressSeconds else 0,
+                progressSeconds = 0,
                 isNowPlayingOpen = openPlayer || state.isNowPlayingOpen
             )
         }
@@ -205,6 +291,10 @@ class MillesMusicViewModel : ViewModel() {
     }
 
     fun seekTo(seconds: Int) {
+        val player = playbackController
+        if (player != null && player.currentMediaItem != null) {
+            player.seekTo(seconds.coerceAtLeast(0) * 1000L)
+        }
         _uiState.update { state ->
             val clamped = seconds.coerceIn(0, state.currentTrack.durationSeconds)
             state.copy(progressSeconds = clamped)
@@ -212,40 +302,38 @@ class MillesMusicViewModel : ViewModel() {
     }
 
     fun seekMs(positionMs: Long) {
-        seekTo((positionMs / 1000L).toInt())
+        val safePosition = positionMs.coerceAtLeast(0L)
+        playbackController?.takeIf { it.currentMediaItem != null }?.seekTo(safePosition)
+        _uiState.update { it.copy(progressSeconds = (safePosition / 1000L).toInt()) }
     }
 
     fun skipToNext(autoTriggered: Boolean = false) {
-        _uiState.update { state ->
-            val list = state.queue.ifEmpty { SampleCatalog.tracks }
-            val currentIdx = list.indexOfFirst { it.id == state.currentTrack.id }
-            val nextTrack = if (state.isShuffleEnabled && list.size > 1) {
-                list.filter { it.id != state.currentTrack.id }.random()
-            } else {
-                val nextIdx = if (currentIdx < 0) 0 else (currentIdx + 1) % list.size
-                if (autoTriggered && state.repeatMode == RepeatMode.OFF && currentIdx == list.lastIndex) {
-                    return@update state.copy(isPlaying = false, progressSeconds = 0)
-                }
-                list[nextIdx]
-            }
-            state.copy(currentTrack = nextTrack, progressSeconds = 0, isPlaying = true)
+        val player = playbackController
+        if (player?.currentMediaItem != null) {
+            if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+            else if (player.repeatMode == Player.REPEAT_MODE_ALL) player.seekToNextMediaItem()
+            else if (autoTriggered) player.pause()
+            else showStatusBanner("End of queue")
+            return
         }
+        showStatusBanner("No playable tracks in the queue")
     }
 
     fun skipToPrevious() {
-        _uiState.update { state ->
-            if (state.progressSeconds > 4) {
-                return@update state.copy(progressSeconds = 0)
-            }
-            val list = state.queue.ifEmpty { SampleCatalog.tracks }
-            val currentIdx = list.indexOfFirst { it.id == state.currentTrack.id }
-            val prevIdx = if (currentIdx <= 0) list.lastIndex else currentIdx - 1
-            state.copy(currentTrack = list[prevIdx], progressSeconds = 0, isPlaying = true)
+        val player = playbackController
+        if (player?.currentMediaItem != null) {
+            if (player.currentPosition > 4_000L) player.seekTo(0L)
+            else if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
+            else player.seekTo(0L)
+            return
         }
+        showStatusBanner("No playable track is loaded")
     }
 
     fun toggleShuffle() {
-        _uiState.update { it.copy(isShuffleEnabled = !it.isShuffleEnabled) }
+        val enabled = !_uiState.value.isShuffleEnabled
+        playbackController?.shuffleModeEnabled = enabled
+        _uiState.update { it.copy(isShuffleEnabled = enabled) }
     }
 
     fun cycleRepeatMode() {
@@ -255,6 +343,7 @@ class MillesMusicViewModel : ViewModel() {
                 RepeatMode.ALL -> RepeatMode.OFF
                 RepeatMode.ONE -> RepeatMode.OFF
             }
+            playbackController?.repeatMode = repeatModeToPlayer(next)
             state.copy(repeatMode = next)
         }
     }
