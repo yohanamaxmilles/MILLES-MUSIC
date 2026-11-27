@@ -83,6 +83,10 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
+  // BitChord-inspired playback foundation: AndroidX Media3.
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.session)
+  implementation(libs.androidx.media3.datasource.okhttp)
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
