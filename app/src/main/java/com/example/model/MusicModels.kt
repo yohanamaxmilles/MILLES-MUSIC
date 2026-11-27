@@ -40,6 +40,8 @@ data class Track(
     val genre: String,
     val durationSeconds: Int,
     val artwork: ArtworkDescriptor,
+    val coverUrl: String? = null,
+    val streamUrl: String? = null,
     val isExplicit: Boolean = false,
     val isTrending: Boolean = false,
     val isNewRelease: Boolean = false,

@@ -3,7 +3,9 @@ package com.example.state
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.BuildConfig
+import com.example.audio.AudioStreamPlayer
+import com.example.audio.JamendoStreamPlayer
+import com.example.data.JamendoRepository
 import com.example.model.Album
 import com.example.model.Artist
 import com.example.model.ArtworkDescriptor
@@ -17,6 +19,9 @@ import com.example.model.ThemeMode
 import com.example.model.Track
 import com.example.ui.PlayerUiState
 import com.example.ui.components.MillesTab
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,7 +48,13 @@ data class MillesUiState(
     val audioQuality: AudioQuality = AudioQuality.HIGH,
 
     // Discovery & Library state
+    val trendingTracks: List<Track> = SampleCatalog.tracks.filter { it.isTrending },
+    val newReleases: List<Track> = SampleCatalog.tracks.filter { it.isNewRelease },
+    val topCharts: List<Track> = SampleCatalog.tracks,
     val searchQuery: String = "",
+    val searchResults: List<Track> = emptyList(),
+    val isSearching: Boolean = false,
+    val genreTracksByGenreId: Map<String, List<Track>> = emptyMap(),
     val favoriteTrackIds: Set<String> = SampleCatalog.initialFavoriteTrackIds,
     val userPlaylists: List<Playlist> = SampleCatalog.initialUserPlaylists,
 
@@ -60,8 +71,20 @@ data class MillesUiState(
     val isCurrentTrackFavorite: Boolean
         get() = favoriteTrackIds.contains(currentTrack.id)
 
+    val knownTracks: List<Track>
+        get() = (
+            listOf(currentTrack) +
+                queue +
+                trendingTracks +
+                newReleases +
+                topCharts +
+                searchResults +
+                genreTracksByGenreId.values.flatten() +
+                SampleCatalog.tracks
+            ).distinctBy { it.id }
+
     val favoriteTracks: List<Track>
-        get() = SampleCatalog.tracks.filter { favoriteTrackIds.contains(it.id) }
+        get() = knownTracks.filter { favoriteTrackIds.contains(it.id) }
 }
 
 enum class ProfileSheetType {
@@ -71,18 +94,72 @@ enum class ProfileSheetType {
     HELP
 }
 
-class MillesMusicViewModel : ViewModel() {
-
-    private val jamendoClientId: String = BuildConfig.JAMENDO_CLIENT_ID
+class MillesMusicViewModel(
+    private val jamendoRepository: JamendoRepository = JamendoRepository(),
+    private val streamPlayer: AudioStreamPlayer = JamendoStreamPlayer()
+) : ViewModel() {
 
     val isJamendoConfigured: Boolean
-        get() = jamendoClientId.isNotBlank() && jamendoClientId != "MY_JAMENDO_CLIENT_ID"
+        get() = jamendoRepository.isConfigured
 
     private val _uiState = MutableStateFlow(MillesUiState())
     val uiState: StateFlow<MillesUiState> = _uiState.asStateFlow()
 
+    private var searchJob: Job? = null
+    private var streamingTrackId: String? = null
+
     init {
         runPlaybackTicker()
+        if (jamendoRepository.isConfigured) {
+            loadJamendoCatalog()
+        }
+    }
+
+    private fun loadJamendoCatalog() {
+        viewModelScope.launch {
+            coroutineScope {
+                val trendingDeferred = async { jamendoRepository.fetchTrendingTracks() }
+                val newReleasesDeferred = async { jamendoRepository.fetchNewReleases() }
+                val trendingResult = trendingDeferred.await()
+                val newReleasesResult = newReleasesDeferred.await()
+
+                val liveTrending = trendingResult.getOrNull().orEmpty()
+                val liveReleases = newReleasesResult.getOrNull().orEmpty()
+
+                if (liveTrending.isNotEmpty() || liveReleases.isNotEmpty()) {
+                    val combined = (liveTrending + liveReleases).distinctBy { it.id }
+                    _uiState.update { state ->
+                        val shouldReplaceInitialTrack =
+                            !state.isPlaying && state.currentTrack.id == SampleCatalog.tracks.first().id
+                        val nextCurrent = if (shouldReplaceInitialTrack && combined.isNotEmpty()) {
+                            combined.first()
+                        } else {
+                            state.currentTrack
+                        }
+                        val nextProgress = if (shouldReplaceInitialTrack) 0 else state.progressSeconds
+                        val nextQueue = if (shouldReplaceInitialTrack && combined.isNotEmpty()) {
+                            combined
+                        } else {
+                            state.queue
+                        }
+                        state.copy(
+                            trendingTracks = liveTrending.ifEmpty { state.trendingTracks },
+                            newReleases = liveReleases.ifEmpty { state.newReleases },
+                            topCharts = combined.ifEmpty { state.topCharts },
+                            currentTrack = nextCurrent,
+                            progressSeconds = nextProgress,
+                            queue = nextQueue
+                        )
+                    }
+                } else {
+                    val failureMessage = trendingResult.exceptionOrNull()?.message
+                        ?: newReleasesResult.exceptionOrNull()?.message
+                    if (!failureMessage.isNullOrBlank()) {
+                        showStatusBanner(failureMessage)
+                    }
+                }
+            }
+        }
     }
 
     private fun runPlaybackTicker() {
@@ -91,21 +168,75 @@ class MillesMusicViewModel : ViewModel() {
                 delay(1000L)
                 val snapshot = _uiState.value
                 if (snapshot.isPlaying) {
-                    val nextSec = snapshot.progressSeconds + 1
-                    if (nextSec >= snapshot.currentTrack.durationSeconds) {
-                        advanceTrackOnCompletion()
+                    val hasActiveStream = snapshot.currentTrack.streamUrl != null &&
+                        streamingTrackId == snapshot.currentTrack.id
+                    if (hasActiveStream) {
+                        val playerSeconds = streamPlayer.currentPositionSeconds()
+                        if (playerSeconds != null) {
+                            _uiState.update {
+                                it.copy(
+                                    progressSeconds = playerSeconds.coerceIn(
+                                        0,
+                                        it.currentTrack.durationSeconds.coerceAtLeast(1)
+                                    )
+                                )
+                            }
+                        }
                     } else {
-                        _uiState.update { it.copy(progressSeconds = nextSec) }
+                        val nextSec = snapshot.progressSeconds + 1
+                        if (nextSec >= snapshot.currentTrack.durationSeconds) {
+                            advanceTrackOnCompletion()
+                        } else {
+                            _uiState.update { it.copy(progressSeconds = nextSec) }
+                        }
                     }
                 }
             }
         }
     }
 
+    private fun startStreamingIfNeeded(track: Track) {
+        val url = track.streamUrl
+        if (url.isNullOrBlank()) {
+            streamingTrackId = null
+            streamPlayer.stopAndReset()
+            return
+        }
+        streamingTrackId = track.id
+        streamPlayer.playStream(
+            url = url,
+            onPrepared = { durationSeconds ->
+                _uiState.update { state ->
+                    if (state.currentTrack.id == track.id) {
+                        state.copy(
+                            currentTrack = state.currentTrack.copy(durationSeconds = durationSeconds),
+                            isPlaying = true
+                        )
+                    } else state
+                }
+            },
+            onCompletion = {
+                if (_uiState.value.currentTrack.id == track.id) {
+                    advanceTrackOnCompletion()
+                }
+            },
+            onError = { message ->
+                if (_uiState.value.currentTrack.id == track.id) {
+                    streamingTrackId = null
+                    _uiState.update { it.copy(isPlaying = false) }
+                    showStatusBanner(message)
+                }
+            }
+        )
+    }
+
     private fun advanceTrackOnCompletion() {
         val state = _uiState.value
         if (state.repeatMode == RepeatMode.ONE) {
             _uiState.update { it.copy(progressSeconds = 0, isPlaying = true) }
+            if (state.currentTrack.streamUrl != null) {
+                startStreamingIfNeeded(state.currentTrack)
+            }
             return
         }
         skipToNext(autoTriggered = true)
@@ -127,6 +258,26 @@ class MillesMusicViewModel : ViewModel() {
                 secondaryStack = it.secondaryStack + destination,
                 isNowPlayingOpen = false
             )
+        }
+        if (destination is SecondaryDestination.GenreDetail) {
+            loadGenreTracks(destination.genreId)
+        }
+    }
+
+    private fun loadGenreTracks(genreId: String) {
+        if (!jamendoRepository.isConfigured) return
+        if (_uiState.value.genreTracksByGenreId.containsKey(genreId)) return
+        val genre = findGenre(genreId) ?: return
+        viewModelScope.launch {
+            jamendoRepository.fetchTracksByGenre(genre.name).onSuccess { tracks ->
+                if (tracks.isNotEmpty()) {
+                    _uiState.update { state ->
+                        state.copy(
+                            genreTracksByGenreId = state.genreTracksByGenreId + (genreId to tracks)
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -176,7 +327,21 @@ class MillesMusicViewModel : ViewModel() {
     }
 
     fun togglePlayPause() {
-        _uiState.update { it.copy(isPlaying = !it.isPlaying) }
+        val snapshot = _uiState.value
+        val nextPlaying = !snapshot.isPlaying
+        _uiState.update { it.copy(isPlaying = nextPlaying) }
+        val track = snapshot.currentTrack
+        if (track.streamUrl != null) {
+            if (nextPlaying) {
+                if (streamingTrackId == track.id && streamPlayer.currentPositionSeconds() != null) {
+                    streamPlayer.resume()
+                } else {
+                    startStreamingIfNeeded(track)
+                }
+            } else {
+                streamPlayer.pause()
+            }
+        }
     }
 
     fun playTrack(
@@ -185,8 +350,10 @@ class MillesMusicViewModel : ViewModel() {
         source: String? = null,
         openPlayer: Boolean = false
     ) {
+        val prevTrackId = _uiState.value.currentTrack.id
         _uiState.update { state ->
-            val newQueue = customQueue ?: if (state.queue.any { it.id == track.id }) state.queue else SampleCatalog.tracks
+            val fallbackQueue = state.topCharts.ifEmpty { SampleCatalog.tracks }
+            val newQueue = customQueue ?: if (state.queue.any { it.id == track.id }) state.queue else fallbackQueue
             state.copy(
                 currentTrack = track,
                 queue = newQueue,
@@ -196,10 +363,15 @@ class MillesMusicViewModel : ViewModel() {
                 isNowPlayingOpen = openPlayer || state.isNowPlayingOpen
             )
         }
+        if (track.id != prevTrackId || streamingTrackId != track.id) {
+            startStreamingIfNeeded(track)
+        } else if (track.streamUrl != null) {
+            streamPlayer.resume()
+        }
     }
 
     fun playHeroMix() {
-        val mix = SampleCatalog.tracks.filter { it.isTrending }.ifEmpty { SampleCatalog.tracks }
+        val mix = _uiState.value.trendingTracks.ifEmpty { SampleCatalog.tracks }
         playTrack(mix.first(), customQueue = mix, source = "Good Music, Every Day", openPlayer = true)
     }
 
@@ -211,9 +383,15 @@ class MillesMusicViewModel : ViewModel() {
     }
 
     fun seekTo(seconds: Int) {
+        var clampedTarget = 0
         _uiState.update { state ->
-            val clamped = seconds.coerceIn(0, state.currentTrack.durationSeconds)
-            state.copy(progressSeconds = clamped)
+            clampedTarget = seconds.coerceIn(0, state.currentTrack.durationSeconds)
+            state.copy(progressSeconds = clampedTarget)
+        }
+        if (_uiState.value.currentTrack.streamUrl != null &&
+            streamingTrackId == _uiState.value.currentTrack.id
+        ) {
+            streamPlayer.seekToMs(clampedTarget * 1000)
         }
     }
 
@@ -222,31 +400,52 @@ class MillesMusicViewModel : ViewModel() {
     }
 
     fun skipToNext(autoTriggered: Boolean = false) {
+        var nextTrackToPlay: Track? = null
+        var stopped = false
         _uiState.update { state ->
-            val list = state.queue.ifEmpty { SampleCatalog.tracks }
+            val list = state.queue.ifEmpty { state.topCharts.ifEmpty { SampleCatalog.tracks } }
             val currentIdx = list.indexOfFirst { it.id == state.currentTrack.id }
             val nextTrack = if (state.isShuffleEnabled && list.size > 1) {
                 list.filter { it.id != state.currentTrack.id }.random()
             } else {
                 val nextIdx = if (currentIdx < 0) 0 else (currentIdx + 1) % list.size
                 if (autoTriggered && state.repeatMode == RepeatMode.OFF && currentIdx == list.lastIndex) {
+                    stopped = true
                     return@update state.copy(isPlaying = false, progressSeconds = 0)
                 }
                 list[nextIdx]
             }
+            nextTrackToPlay = nextTrack
             state.copy(currentTrack = nextTrack, progressSeconds = 0, isPlaying = true)
+        }
+        if (stopped) {
+            streamingTrackId = null
+            streamPlayer.stopAndReset()
+        } else {
+            nextTrackToPlay?.let(::startStreamingIfNeeded)
         }
     }
 
     fun skipToPrevious() {
+        var prevTrackToPlay: Track? = null
+        var restartOnly = false
         _uiState.update { state ->
             if (state.progressSeconds > 4) {
+                restartOnly = true
                 return@update state.copy(progressSeconds = 0)
             }
-            val list = state.queue.ifEmpty { SampleCatalog.tracks }
+            val list = state.queue.ifEmpty { state.topCharts.ifEmpty { SampleCatalog.tracks } }
             val currentIdx = list.indexOfFirst { it.id == state.currentTrack.id }
             val prevIdx = if (currentIdx <= 0) list.lastIndex else currentIdx - 1
+            prevTrackToPlay = list[prevIdx]
             state.copy(currentTrack = list[prevIdx], progressSeconds = 0, isPlaying = true)
+        }
+        if (restartOnly) {
+            if (_uiState.value.currentTrack.streamUrl != null) {
+                streamPlayer.seekToMs(0)
+            }
+        } else {
+            prevTrackToPlay?.let(::startStreamingIfNeeded)
         }
     }
 
@@ -282,8 +481,52 @@ class MillesMusicViewModel : ViewModel() {
     }
 
     fun updateSearchQuery(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
+        searchJob?.cancel()
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            _uiState.update { it.copy(searchQuery = query, searchResults = emptyList(), isSearching = false) }
+            return
+        }
+
+        if (!jamendoRepository.isConfigured) {
+            val localMatches = filterKnownTracks(_uiState.value.knownTracks, trimmed)
+            _uiState.update {
+                it.copy(searchQuery = query, searchResults = localMatches, isSearching = false)
+            }
+            return
+        }
+
+        _uiState.update { it.copy(searchQuery = query, isSearching = true) }
+        searchJob = viewModelScope.launch {
+            delay(350L)
+            jamendoRepository.searchTracks(trimmed).fold(
+                onSuccess = { remoteTracks ->
+                    _uiState.update { state ->
+                        if (state.searchQuery.trim() == trimmed) {
+                            state.copy(searchResults = remoteTracks, isSearching = false)
+                        } else state
+                    }
+                },
+                onFailure = { error ->
+                    val fallbackMatches = filterKnownTracks(_uiState.value.knownTracks, trimmed)
+                    _uiState.update { state ->
+                        if (state.searchQuery.trim() == trimmed) {
+                            state.copy(searchResults = fallbackMatches, isSearching = false)
+                        } else state
+                    }
+                    error.message?.let(::showStatusBanner)
+                }
+            )
+        }
     }
+
+    private fun filterKnownTracks(tracks: List<Track>, query: String): List<Track> =
+        tracks.filter {
+            it.title.contains(query, ignoreCase = true) ||
+                it.artist.contains(query, ignoreCase = true) ||
+                it.album.contains(query, ignoreCase = true) ||
+                it.genre.contains(query, ignoreCase = true)
+        }
 
     fun selectThemeMode(mode: ThemeMode) {
         _uiState.update { it.copy(themeMode = mode) }
@@ -389,6 +632,12 @@ class MillesMusicViewModel : ViewModel() {
         }
     }
 
+    fun findTrackById(id: String): Track? =
+        _uiState.value.knownTracks.find { it.id == id }
+
+    fun findTracksByIds(ids: List<String>): List<Track> =
+        ids.mapNotNull(::findTrackById)
+
     fun findPlaylist(id: String): Playlist? =
         _uiState.value.userPlaylists.find { it.id == id }
             ?: SampleCatalog.trendingCollections.find { it.id == id }
@@ -402,6 +651,11 @@ class MillesMusicViewModel : ViewModel() {
 
     fun findAlbum(id: String): Album? =
         SampleCatalog.albums.find { it.id == id }
+
+    override fun onCleared() {
+        streamPlayer.release()
+        super.onCleared()
+    }
 }
 
 /** Maps domain Track into the new UI Track model used by the /ui composables. */
@@ -409,7 +663,7 @@ fun Track.toUiTrack(): com.example.ui.Track = com.example.ui.Track(
     id = id,
     title = title,
     artist = artist,
-    coverUrl = artwork.imageRes,
+    coverUrl = coverUrl ?: artwork.imageRes,
     durationMs = durationSeconds * 1000L
 )
 
@@ -451,7 +705,11 @@ fun MillesUiState.toPlayerUiState(): PlayerUiState = PlayerUiState(
     quality = audioQuality.shortLabel,
     source = playbackSource,
     queue = queue.map { it.toUiTrack() },
-    related = SampleCatalog.tracks.filter { it.id != currentTrack.id }.take(8).map { it.toUiTrack() },
+    related = (topCharts + trendingTracks + SampleCatalog.tracks)
+        .distinctBy { it.id }
+        .filter { it.id != currentTrack.id }
+        .take(8)
+        .map { it.toUiTrack() },
     lyrics = SampleCatalog.lyricsForTrack(currentTrack.id)
 )
 

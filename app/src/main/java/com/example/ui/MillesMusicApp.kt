@@ -76,7 +76,7 @@ fun MillesMusicApp(
                 override fun onMore() = viewModel.openTrackOptions(viewModel.uiState.value.currentTrack)
                 override fun onQualityClick() = viewModel.setAudioQualitySheetOpen(true)
                 override fun onTrackClick(track: Track) {
-                    SampleCatalog.trackById(track.id)?.let { domainTrack ->
+                    viewModel.findTrackById(track.id)?.let { domainTrack ->
                         viewModel.playTrack(domainTrack, openPlayer = true)
                     }
                 }
@@ -242,17 +242,17 @@ private fun TabContent(
     viewModel: MillesMusicViewModel,
     bottomInset: androidx.compose.ui.unit.Dp
 ) {
-    val trendingTracks = remember {
-        SampleCatalog.tracks.filter { it.isTrending }.map { it.toUiTrack() }
+    val trendingTracks = remember(uiState.trendingTracks) {
+        uiState.trendingTracks.map { it.toUiTrack() }
     }
-    val madeForYouTracks = remember {
-        SampleCatalog.tracks.reversed().take(6).map { it.toUiTrack() }
+    val madeForYouTracks = remember(uiState.topCharts) {
+        uiState.topCharts.reversed().take(6).map { it.toUiTrack() }
     }
-    val newReleases = remember {
-        SampleCatalog.tracks.filter { it.isNewRelease }.map { it.toUiTrack() }
+    val newReleases = remember(uiState.newReleases) {
+        uiState.newReleases.map { it.toUiTrack() }
     }
-    val topCharts = remember {
-        SampleCatalog.tracks.map { it.toUiTrack() }
+    val topCharts = remember(uiState.topCharts) {
+        uiState.topCharts.map { it.toUiTrack() }
     }
 
     when (tab) {
@@ -265,7 +265,7 @@ private fun TabContent(
                 isHeroPlaying = uiState.isPlaying && uiState.playbackSource == "Good Music, Every Day",
                 onPlayHero = viewModel::playHeroMix,
                 onTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                    viewModel.findTrackById(uiTrack.id)?.let { track ->
                         viewModel.playTrack(track, source = "Trending Now")
                     }
                 },
@@ -274,7 +274,7 @@ private fun TabContent(
                     viewModel.navigateTo(
                         SecondaryDestination.CollectionOverview(
                             title = "Trending Now",
-                            trackIds = SampleCatalog.tracks.filter { it.isTrending }.map { it.id }
+                            trackIds = uiState.trendingTracks.map { it.id }
                         )
                     )
                 },
@@ -282,7 +282,7 @@ private fun TabContent(
                     viewModel.navigateTo(
                         SecondaryDestination.CollectionOverview(
                             title = "Made for You",
-                            trackIds = SampleCatalog.tracks.map { it.id }
+                            trackIds = uiState.topCharts.map { it.id }
                         )
                     )
                 },
@@ -296,12 +296,12 @@ private fun TabContent(
                 topCharts = topCharts,
                 activeTrackId = uiState.currentTrack.id,
                 onTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                    viewModel.findTrackById(uiTrack.id)?.let { track ->
                         viewModel.playTrack(track, source = "Top Charts")
                     }
                 },
                 onMoreTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                    viewModel.findTrackById(uiTrack.id)?.let(viewModel::openTrackOptions)
                 },
                 bottomInset = bottomInset
             )
@@ -320,12 +320,12 @@ private fun TabContent(
                 artists = artistCols,
                 activeTrackId = uiState.currentTrack.id,
                 onTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                    viewModel.findTrackById(uiTrack.id)?.let { track ->
                         viewModel.playTrack(track, customQueue = uiState.favoriteTracks, source = "Liked Songs")
                     }
                 },
                 onMoreTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                    viewModel.findTrackById(uiTrack.id)?.let(viewModel::openTrackOptions)
                 },
                 onCollection = { collection, seg ->
                     val dest = when (seg) {
@@ -349,15 +349,8 @@ private fun TabContent(
 
         MillesTab.Search -> {
             val query = uiState.searchQuery
-            val results = remember(query) {
-                val q = query.trim()
-                if (q.isEmpty()) emptyList()
-                else SampleCatalog.tracks.filter {
-                    it.title.contains(q, ignoreCase = true) ||
-                        it.artist.contains(q, ignoreCase = true) ||
-                        it.album.contains(q, ignoreCase = true) ||
-                        it.genre.contains(q, ignoreCase = true)
-                }.map { it.toUiTrack() }
+            val results = remember(uiState.searchResults) {
+                uiState.searchResults.map { it.toUiTrack() }
             }
             val genreCols = remember { SampleCatalog.genres.map { it.toUiCollection() } }
 
@@ -368,12 +361,12 @@ private fun TabContent(
                 genres = genreCols,
                 activeTrackId = uiState.currentTrack.id,
                 onTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                    viewModel.findTrackById(uiTrack.id)?.let { track ->
                         viewModel.playTrack(track, source = "Search")
                     }
                 },
                 onMoreTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                    viewModel.findTrackById(uiTrack.id)?.let(viewModel::openTrackOptions)
                 },
                 onGenre = { genreCol ->
                     viewModel.navigateTo(SecondaryDestination.GenreDetail(genreCol.id))
@@ -394,7 +387,7 @@ private fun DetailContent(
     when (destination) {
         is SecondaryDestination.PlaylistDetail -> {
             val playlist = viewModel.findPlaylist(destination.playlistId)
-            val tracks = SampleCatalog.tracksByIds(playlist?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(4) }
+            val tracks = viewModel.findTracksByIds(playlist?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(4) }
             CollectionDetailScreen(
                 title = playlist?.title ?: "Playlist",
                 subtitle = playlist?.subtitle ?: "",
@@ -416,7 +409,10 @@ private fun DetailContent(
 
         is SecondaryDestination.GenreDetail -> {
             val genre = viewModel.findGenre(destination.genreId)
-            val tracks = SampleCatalog.tracksByIds(genre?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(4) }
+            val liveGenreTracks = uiState.genreTracksByGenreId[destination.genreId].orEmpty()
+            val tracks = liveGenreTracks.ifEmpty {
+                viewModel.findTracksByIds(genre?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(4) }
+            }
             CollectionDetailScreen(
                 title = genre?.name ?: "Genre",
                 subtitle = genre?.subtitle ?: "",
@@ -462,7 +458,7 @@ private fun DetailContent(
 
         is SecondaryDestination.AlbumDetail -> {
             val album = viewModel.findAlbum(destination.albumId)
-            val tracks = SampleCatalog.tracksByIds(album?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(3) }
+            val tracks = viewModel.findTracksByIds(album?.trackIds.orEmpty()).ifEmpty { SampleCatalog.tracks.take(3) }
             CollectionDetailScreen(
                 title = album?.title ?: "Album",
                 subtitle = "${album?.artist ?: ""} · ${album?.year ?: 2026}",
@@ -483,11 +479,11 @@ private fun DetailContent(
         }
 
         is SecondaryDestination.CollectionOverview -> {
-            val tracks = SampleCatalog.tracksByIds(destination.trackIds).ifEmpty { SampleCatalog.tracks }
+            val tracks = viewModel.findTracksByIds(destination.trackIds).ifEmpty { uiState.topCharts }
             CollectionDetailScreen(
                 title = destination.title,
                 subtitle = "${tracks.size} curated tracks",
-                coverUrl = tracks.first().artwork.imageRes ?: R.drawable.img_hero_music,
+                coverUrl = tracks.first().coverUrl ?: tracks.first().artwork.imageRes ?: R.drawable.img_hero_music,
                 tracks = tracks,
                 isCircularArtwork = false,
                 currentTrackId = uiState.currentTrack.id,

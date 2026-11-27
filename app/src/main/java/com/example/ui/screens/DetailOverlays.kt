@@ -387,7 +387,7 @@ fun TrackOptionsSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 AsyncImage(
-                    model = track.artwork.imageRes,
+                    model = track.coverUrl ?: track.artwork.imageRes,
                     contentDescription = track.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp))
