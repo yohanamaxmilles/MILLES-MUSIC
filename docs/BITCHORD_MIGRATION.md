@@ -70,7 +70,10 @@ The migration must resolve these differences deliberately. Do not downgrade the 
 - [x] Reviewed BitChord's GPL-3.0 license.
 - [x] Reviewed upstream Gradle structure and Android playback service.
 - [x] Identified the current MILLES MUSIC Compose entry points.
-- [ ] Import and pin the complete upstream source tree.
-- [ ] Adapt package and app identity.
-- [ ] Connect MILLES MUSIC UI to the real playback engine.
+- [x] Added a minimal Media3 playback service host on the integration branch.
+- [x] Added a MediaController connector for the UI layer.
+- [x] Added a validated MediaItem factory for provider-resolved streams.
+- [ ] Import and pin the complete upstream source tree or selectively port required source modules.
+- [ ] Connect the existing ViewModel and UI controls to MediaController state.
+- [ ] Add a compliant catalogue/source adapter that returns authorised playable streams.
 - [ ] Build and test on Android.
