@@ -43,7 +43,9 @@ data class Track(
     val isExplicit: Boolean = false,
     val isTrending: Boolean = false,
     val isNewRelease: Boolean = false,
-    val isUpbeat: Boolean = false
+    val isUpbeat: Boolean = false,
+    /** Direct, provider-authorised audio stream URL. Null for catalogue-only/sample entries. */
+    val streamUrl: String? = null
 )
 
 @Immutable
