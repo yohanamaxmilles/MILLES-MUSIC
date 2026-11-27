@@ -366,16 +366,7 @@ private fun TabContent(
 
         MillesTab.Search -> {
             val query = uiState.searchQuery
-            val results = remember(query) {
-                val q = query.trim()
-                if (q.isEmpty()) emptyList()
-                else SampleCatalog.tracks.filter {
-                    it.title.contains(q, ignoreCase = true) ||
-                        it.artist.contains(q, ignoreCase = true) ||
-                        it.album.contains(q, ignoreCase = true) ||
-                        it.genre.contains(q, ignoreCase = true)
-                }.map { it.toUiTrack() }
-            }
+            val results = uiState.searchResults.map { it.toUiTrack() }
             val genreCols = remember { SampleCatalog.genres.map { it.toUiCollection() } }
 
             SearchScreen(
@@ -385,16 +376,26 @@ private fun TabContent(
                 genres = genreCols,
                 activeTrackId = uiState.currentTrack.id,
                 onTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let { track ->
-                        viewModel.playTrack(track, source = "Search")
+                    if (uiTrack.id.startsWith("jamendo_")) {
+                        viewModel.playSearchResult(uiTrack.id)
+                    } else {
+                        SampleCatalog.trackById(uiTrack.id)?.let { track ->
+                            viewModel.playTrack(track, source = "Search")
+                        }
                     }
                 },
                 onMoreTrack = { uiTrack ->
-                    SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                    if (uiTrack.id.startsWith("jamendo_")) {
+                        viewModel.openSearchResultOptions(uiTrack.id)
+                    } else {
+                        SampleCatalog.trackById(uiTrack.id)?.let(viewModel::openTrackOptions)
+                    }
                 },
                 onGenre = { genreCol ->
                     viewModel.navigateTo(SecondaryDestination.GenreDetail(genreCol.id))
                 },
+                isSearching = uiState.isSearching,
+                errorMessage = uiState.searchError,
                 bottomInset = bottomInset
             )
         }
