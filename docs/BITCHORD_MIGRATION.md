@@ -52,9 +52,21 @@ Use BitChord as the upstream technical foundation for playback and music-source 
 - YouTube Music and other unofficial source implementations must be assessed separately against their service terms. Their presence in upstream code is not permission to redistribute music.
 - Keep credentials, signing keys, and private configuration out of Git.
 
+## Build compatibility findings
+
+The two projects cannot be merged by copying a single playback file or replacing one Gradle file:
+
+- MILLES MUSIC currently uses AGP 9.1.1, Kotlin 2.4.21, compile SDK 36.1, and min SDK 24.
+- The reviewed BitChord revision uses AGP 8.10.1, Kotlin 2.3.20, compile SDK 37, and min SDK 26 for its Android app.
+- BitChord's playback service imports many upstream playback, data, audio, and platform classes. It is not a standalone file.
+- BitChord is a large multi-module project with shared Kotlin and shared UI modules, native components, and a substantial dependency set.
+
+The migration must resolve these differences deliberately. Do not downgrade the existing MILLES MUSIC toolchain or replace the app entry point until the imported project builds in isolation.
+
 ## Current status
 
 - [x] Created an isolated integration branch.
+- [x] Added the upstream GPL-3.0 license text and third-party notice.
 - [x] Reviewed BitChord's GPL-3.0 license.
 - [x] Reviewed upstream Gradle structure and Android playback service.
 - [x] Identified the current MILLES MUSIC Compose entry points.
