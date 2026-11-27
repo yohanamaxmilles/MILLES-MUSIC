@@ -148,9 +148,10 @@ fun SearchScreen(
                             Modifier.fillMaxWidth().padding(start = 76.dp, end = 20.dp, bottom = 10.dp),
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
+                            Text("Provided by Jamendo", color = palette.textSecondary, fontSize = 11.sp)
                             track.providerTrackUrl?.let { url ->
                                 Text(
-                                    "Jamendo · View track",
+                                    "Track page",
                                     Modifier.clickable { runCatching { uriHandler.openUri(url) } },
                                     color = Milles.Lime,
                                     fontSize = 11.sp
