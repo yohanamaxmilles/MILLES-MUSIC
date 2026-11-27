@@ -25,6 +25,7 @@ enum class RepeatMode {
 @Immutable
 data class ArtworkDescriptor(
     @DrawableRes val imageRes: Int? = null,
+    val imageUrl: String? = null,
     val primaryColor: Color = Color(0xFF2B2D24),
     val secondaryColor: Color = Color(0xFF171813),
     val accentColor: Color = Color(0xFFC6F24E),
