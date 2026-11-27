@@ -21,8 +21,11 @@ MILLES MUSIC Compose UI or sample catalogue.
 - Connect UI through MediaController.
 - Resolve authorised audio streams through a provider adapter before creating
   MediaItems. A catalogue result or YouTube page URL is not a playable stream.
-- Add queue, seek, repeat, shuffle, playback state and media notification wiring
-  in later integration steps.
+- The Compose app now connects to the service with a MediaController.
+- Play/Pause, Next, Previous, Seek, Shuffle and Repeat now call the Media3 controller.
+- Playback position and playing state are read from the real player, not a simulated ticker.
+- Track has an optional `streamUrl`. Sample catalogue entries intentionally leave it null until a compliant provider supplies a playable stream.
+- Media notification and external media-button behaviour still need device verification.
 - Do not import BitChord's YouTube extraction or signature-circumvention code.
   Provider terms and music rights must be checked independently.
 
@@ -30,9 +33,13 @@ MILLES MUSIC Compose UI or sample catalogue.
 
 - `MillesPlaybackService.kt`: app-wide Media3 player and media session.
 - `MillesMediaItemFactory.kt`: validates and converts resolved stream data.
+- `MillesPlaybackConnector.kt`: connects the Compose app to the service.
+- `MillesMusicViewModel.kt`: delegates playback controls and progress to Media3.
 - `gradle/libs.versions.toml`: pinned Media3 dependencies.
 
 ## Verification status
 
 No Android build has been run by this GitHub-only change. Build and device tests
-are required before merging this branch.
+are required before merging this branch. Since current SampleCatalog tracks have
+no stream URLs, the controls are connected but sample tracks will display a clear
+message instead of pretending to play.
