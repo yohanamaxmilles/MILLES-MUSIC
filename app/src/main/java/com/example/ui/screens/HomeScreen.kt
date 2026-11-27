@@ -295,8 +295,8 @@ private fun HeroFeaturedCard(
                     Brush.verticalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            Color(0x33151611),
-                            Color(0xD9151611)
+                            Color(0x33050505),
+                            Color(0xD9050505)
                         )
                     )
                 )
