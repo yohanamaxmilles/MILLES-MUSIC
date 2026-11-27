@@ -190,7 +190,7 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        "Unable to load Jamendo catalog",
+                        "Unable to load music catalog",
                         style = MaterialTheme.typography.titleMedium,
                         color = palette.textPrimary
                     )
@@ -270,14 +270,14 @@ fun HomeScreen(
         }
 
         if (audiusTrending.isNotEmpty()) {
-            item { SectionHeader("Trending on Audius", onSeeAll = onSeeAllAudiusTrending) }
+            item { SectionHeader("Trending Now", onSeeAll = onSeeAllAudiusTrending) }
             item {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(audiusTrending, key = { "aud_${it.id}" }) { track ->
-                        CoverCard(track, track.artist) { onTrack(track, "Trending on Audius") }
+                        CoverCard(track, track.artist) { onTrack(track, "Trending Now") }
                     }
                 }
             }
