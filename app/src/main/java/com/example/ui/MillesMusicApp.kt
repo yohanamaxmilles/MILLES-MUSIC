@@ -297,7 +297,7 @@ private fun TabContent(
                 genres = genreCols,
                 isHeroPlaying = uiState.isPlaying && (
                     uiState.playbackSource == "Popular on Jamendo" ||
-                        uiState.playbackSource == "Trending on Audius"
+                        uiState.playbackSource == "Trending Now"
                     ),
                 onPlayHero = viewModel::playHeroMix,
                 onRetry = viewModel::retryCatalogLoad,
