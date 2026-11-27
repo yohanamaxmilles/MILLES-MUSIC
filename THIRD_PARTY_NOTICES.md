@@ -14,3 +14,13 @@ This notice records the upstream project selected for the MILLES MUSIC migration
 ## Music catalogues and streaming sources
 
 The BitChord software license does not grant rights to music recordings, compositions, artwork, lyrics, or third-party streaming services. Each music source must be evaluated under its own API terms, copyright rules, and creator or rightsholder permissions.
+
+## Jamendo API
+
+- Developer documentation: https://developer.jamendo.com/v3.0/docs
+- API terms: https://devportal.jamendo.com/api_terms_of_use
+- MILLES MUSIC uses the Jamendo read-only tracks API for catalogue search and provider-supplied audio stream URLs.
+- Jamendo API content is published under individual Creative Commons licences. Follow the licence shown for each track.
+- The API terms permit free non-commercial use. Commercial use, including advertising or revenue-generating app tiers, requires prior commercial permission from Jamendo.
+- Display the artist as creator, credit Jamendo as the provider, and link each result directly to its Jamendo track page.
+- This notice does not grant MILLES MUSIC ownership or additional rights to Jamendo content.
