@@ -241,13 +241,22 @@ class MillesMusicViewModel(
                 val albums = albumsResult?.getOrNull().orEmpty()
                 val audiusTrending = audiusTrendingResult?.getOrNull().orEmpty()
                     .mapIndexed { idx, unified -> unified.toDomainTrack(index = idx) }
+                // Combine real Jamendo popularity results with Audius trending results.
+                // Keep provider-specific IDs so playback always uses the original provider.
+                val trendingNow = buildList {
+                    val maxSize = maxOf(popular.size, audiusTrending.size)
+                    for (index in 0 until maxSize) {
+                        popular.getOrNull(index)?.let(::add)
+                        audiusTrending.getOrNull(index)?.let(::add)
+                    }
+                }.distinctBy { it.id }
                 val audiusPlaylists = audiusPlaylistsResult?.getOrNull().orEmpty()
                     .mapIndexed { idx, unified -> unified.toDomainPlaylist(index = idx) }
 
                 val allTracksEmpty = popular.isEmpty() &&
                     recommended.isEmpty() &&
                     newReleases.isEmpty() &&
-                    audiusTrending.isEmpty()
+                    trendingNow.isEmpty()
 
                 val firstError = popularResult?.exceptionOrNull()?.message
                     ?: newReleasesResult?.exceptionOrNull()?.message
@@ -263,7 +272,7 @@ class MillesMusicViewModel(
                         popularTracks = popular,
                         recommendedTracks = recommended,
                         newReleases = newReleases,
-                        audiusTrendingTracks = audiusTrending,
+                        audiusTrendingTracks = trendingNow,
                         audiusTrendingPlaylists = audiusPlaylists,
                         recentlyAddedAlbums = recentAlbums,
                         artists = artists,
@@ -669,17 +678,19 @@ class MillesMusicViewModel(
 
     fun playHeroMix() {
         val state = _uiState.value
-        val mix = state.popularTracks
+        val mix = state.audiusTrendingTracks
+            .ifEmpty { state.popularTracks }
             .ifEmpty { state.newReleases }
-            .ifEmpty { state.audiusTrendingTracks }
         if (mix.isEmpty()) {
             showStatusBanner("No audio tracks loaded yet.")
             return
         }
-        val sourceLabel = if (state.popularTracks.isNotEmpty()) {
+        val sourceLabel = if (state.audiusTrendingTracks.isNotEmpty()) {
+            "Trending Now"
+        } else if (state.popularTracks.isNotEmpty()) {
             "Popular on Jamendo"
         } else {
-            "Trending on Audius"
+            "New Releases"
         }
         playTrack(mix.first(), customQueue = mix, source = sourceLabel, openPlayer = true)
     }
