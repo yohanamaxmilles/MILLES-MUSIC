@@ -89,7 +89,7 @@ class MillesMusicViewModel : ViewModel() {
     private var playerListener: Player.Listener? = null
     private var searchJob: kotlinx.coroutines.Job? = null
     private val musicSource by lazy {
-        JamendoMusicSource(BuildConfig.JAMENDO_CLIENT_ID.ifBlank { "709fa152" })
+        JamendoMusicSource(BuildConfig.JAMENDO_CLIENT_ID)
     }
 
     fun attachPlaybackController(controller: MediaController) {
