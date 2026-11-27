@@ -87,6 +87,8 @@ fun MillesMusicApp(
             ) {
                 NowPlayingScreen(
                     track = uiState.currentTrack,
+                    queue = uiState.queue,
+                    relatedTracks = SampleCatalog.tracks.filter { it.id != uiState.currentTrack.id }.take(8),
                     isPlaying = uiState.isPlaying,
                     progressSeconds = uiState.progressSeconds,
                     isFavorite = uiState.isCurrentTrackFavorite,
